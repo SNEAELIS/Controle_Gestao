@@ -8,6 +8,10 @@
     "build": "vite build",
     "preview": "vite preview"
   },
+  "overrides": {
+    "react": "$react",
+    "react-dom": "$react-dom"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "@tanstack/react-table": "^8.21.3",
