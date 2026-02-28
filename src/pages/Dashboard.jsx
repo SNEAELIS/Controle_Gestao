@@ -547,7 +547,6 @@ export default function DashboardSneaElis() {
 
                 <div className="flex items-center gap-5 border-x border-white/10 px-24">
                   <ShieldCheck size={24} className="text-blue-500 shadow-blue-500/40" />
-                  <span className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em]">Protocolo Militar AES-256</span>
                 </div>
 
                 <div className="flex items-center gap-5">
