@@ -125,38 +125,39 @@ export default function TabelaGerencial() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Função para carregar toda a base (Burlado o limite de 1000)
-  const loadFullDatabase = useCallback(async () => {
-    setLoading(true);
-    try {
-      let allRecords = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
+// Localizado em src/pages/Tabela.jsx
+const loadFullDatabase = useCallback(async () => {
+  setLoading(true);
+  try {
+    let allRecords = [];
+    let from = 0;
+    const step = 1000; // Define o tamanho de cada "pedaço" de dados
+    let hasMore = true;
 
-      while (hasMore) {
-        const { data: chunk, error } = await supabase
-          .from('formalizacoes')
-          .select('*')
-          .order('id', { ascending: true })
-          .range(from, from + step - 1);
+    while (hasMore) {
+      const { data: chunk, error } = await supabase
+        .from('formalizacoes')
+        .select('*')
+        .order('id', { ascending: true })
+        .range(from, from + step - 1); // Puxa de 0-999, depois 1000-1999...
 
-        if (error) throw error;
-        if (!chunk || chunk.length === 0) {
-          hasMore = false;
-        } else {
-          allRecords = [...allRecords, ...chunk];
-          from += step;
-          if (chunk.length < step) hasMore = false;
-        }
+      if (error) throw error;
+      if (!chunk || chunk.length === 0) {
+        hasMore = false;
+      } else {
+        allRecords = [...allRecords, ...chunk]; // Junta os pedaços
+        from += step;
+        if (chunk.length < step) hasMore = false; // Se veio menos que 1000, acabou a base
       }
-      setData(allRecords);
-    } catch (err) {
-      console.error(err);
-      setFeedback({ type: 'error', text: 'Erro ao conectar com o Supabase.' });
-    } finally {
-      setLoading(false);
     }
-  }, []);
+    setData(allRecords); // Agora 'allRecords' contém os 1.821 registros
+  } catch (err) {
+    console.error(err);
+    setFeedback({ type: 'error', text: 'Erro ao conectar com o Supabase.' });
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => { loadFullDatabase(); }, [loadFullDatabase]);
 
