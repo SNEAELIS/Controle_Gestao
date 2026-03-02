@@ -496,7 +496,7 @@ export default function DashboardSneaElis() {
 
       let allData = [];
       let page = 0;
-      const pageSize = 1000;
+      const pageSize = 200;
       let hasMore = true;
 
       while (hasMore) {
