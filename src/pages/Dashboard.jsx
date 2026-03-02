@@ -485,30 +485,27 @@ export default function DashboardSneaElis() {
   const [hoveredState, setHoveredState] = useState(null);
   const [tableGlobalFilter, setTableGlobalFilter] = useState('');
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const geoRes = await fetch(GEO_JSON_URL);
-      if (!geoRes.ok) throw new Error(`GeoJSON: ${geoRes.status}`);
-      const geoJson = await geoRes.json();
-      setGeoFeatures(geoJson.features || []);
+const loadData = useCallback(async () => {
+  setIsLoading(true);
+  try {
+    let allData = [];
+    let page = 0;
+    const pageSize = 500; // Reduzir o tamanho do bloco evita o Time-out
+    let hasMore = true;
 
-      let allData = [];
-      let page = 0;
-      const pageSize = 1000;
-      let hasMore = true;
+    while (hasMore) {
+      // O uso do .range() fragmenta a carga em partes menores
+      const { data: chunk, error } = await supabase
+        .from('formalizacoes')
+        .select('*')
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      while (hasMore) {
-        const { data: chunk, error } = await supabase
-          .from('formalizacoes')
-          .select('*')
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-        if (error) throw error;
-        allData = [...allData, ...chunk];
-        hasMore = chunk.length === pageSize;
-        page++;
-      }
+      if (error) throw error;
+      
+      allData = [...allData, ...chunk];
+      hasMore = chunk.length === pageSize;
+      page++;
+    }
 
       const normalized = allData.map(item => {
         let anoStr = String(item.ANO || item.ano || 'ND').trim();
@@ -535,10 +532,9 @@ export default function DashboardSneaElis() {
         };
       });
 
-      setData(normalized);
+  setData(normalized);
     } catch (err) {
-      setError(err.message || 'Falha ao carregar dados');
-      console.error(err);
+      setError("Erro de conexão: O banco demorou a responder. Tente recarregar.");
     } finally {
       setIsLoading(false);
     }
