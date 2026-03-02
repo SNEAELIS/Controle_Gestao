@@ -8,7 +8,8 @@ import {
   TrendingUp, Activity, FileText, Globe, MousePointer2,
   ShieldCheck, RefreshCw, Layers, ExternalLink, Info,
   Box, Target, Zap, Maximize2, List, Settings, Lock, CloudSync,
-  TrendingDown, Layout, User, Bell
+  TrendingDown, Layout, User, Bell, ArrowUpRight, ChevronDown,
+  HelpCircle, BarChart2, LineChart as LineIcon, AlertTriangle
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -18,572 +19,803 @@ import { geoPath, geoMercator } from 'd3-geo';
 import { scaleLinear } from 'd3-scale';
 import {
   useReactTable, getCoreRowModel, getSortedRowModel,
-  getPaginationRowModel, flexRender
+  getPaginationRowModel, flexRender, getFilteredRowModel
 } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabaseClient';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONFIGURAÇÕES GLOBAIS DE ENGINE E DESIGN
+// CONFIGURAÇÕES GLOBAIS E CONSTANTES DO SISTEMA
 // ─────────────────────────────────────────────────────────────────────────────
+const GEO_JSON_URL = "https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/main/geojson/br_states.json";
 
-const GEO_JSON_BR = "https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/main/geojson/br_states.json";
-
-const SNEAELIS_UI = {
-  bg: '#f8fafc',
+const UI_THEME = {
+  background: '#f8fafc',
   sidebar: '#020617',
-  accent: '#2563eb',
-  emerald: '#10b981',
-  amber: '#f59e0b',
-  rose: '#f43f5e',
-  palette: ['#3b82f6', '#10b981', '#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#f43f5e', '#8b5cf6']
+  primary: '#2563eb',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#f43f5e',
+  info: '#0ea5e9',
+  colors: ['#3b82f6', '#10b981', '#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#f43f5e', '#8b5cf6'],
+  neutral: {
+    50: '#f8fafc',
+    100: '#f1f5f9',
+    200: '#e2e8f0',
+    300: '#cbd5e1',
+    400: '#94a3b8',
+    500: '#64748b',
+    600: '#475569',
+    700: '#334155',
+    800: '#1e293b',
+    900: '#0f172a',
+    950: '#020617'
+  }
 };
+
+const COMPLETED_STATUSES = ['SIM', 'PAGO', 'CONCLUÍDO', 'FINALIZADO', 'APROVADO', 'EXECUTADO', 'REALIZADO', 'EFETIVADO'];
+
+const DEFAULT_PAGE_SIZE = 15;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTES DE UI MODULARES
 // ─────────────────────────────────────────────────────────────────────────────
 
-const KpiCard = ({ icon: Icon, title, value, growth, color, active, onClick }) => (
-  <div 
-    onClick={onClick}
-    className={`relative overflow-hidden group bg-white rounded-[2.5rem] p-8 shadow-sm border transition-all duration-500 cursor-pointer
-      ${active ? 'border-blue-500 ring-[10px] ring-blue-50 scale-[1.03] shadow-2xl' : 'border-slate-100 hover:border-blue-200 hover:shadow-xl'}`}
-  >
-    <div className="relative z-10 flex items-center gap-6">
-      <div className={`w-16 h-16 rounded-[1.6rem] flex items-center justify-center bg-${color}-50 text-${color}-600 shadow-inner group-hover:rotate-12 transition-all duration-500`}>
-        <Icon size={32} />
+const KpiCard = ({ icon: Icon, title, value, subtitle, color = 'primary', isActive = false, onClick, tooltip }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  return (
+    <div 
+      onClick={onClick}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      className={`relative overflow-hidden group bg-white rounded-3xl p-6 shadow-md border transition-all duration-300 cursor-pointer
+        ${isActive ? 'border-2 border-blue-500 shadow-xl scale-105' : 'border-neutral-200 hover:border-blue-300 hover:shadow-lg'}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{title}</p>
+          <h3 className="text-2xl font-bold text-neutral-800">{value}</h3>
+          {subtitle && (
+            <p className={`text-xs font-medium ${subtitle.color} flex items-center gap-1`}>
+              {subtitle.icon} {subtitle.text}
+            </p>
+          )}
+        </div>
+        <div className={`p-3 rounded-xl bg-${color}-100 text-${color}-600`}>
+          <Icon size={24} />
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.4em] mb-1">{title}</p>
-        <h3 className="text-3xl font-black text-slate-800 tracking-tighter truncate leading-none">{value}</h3>
-        {growth && (
-          <div className="flex items-center gap-1 mt-3 font-black text-emerald-500 text-[9px] uppercase tracking-widest">
-            <TrendingUp size={12} /> {growth} Eficiência
-          </div>
-        )}
-      </div>
+      <div className={`absolute bottom-0 left-0 w-full h-1 bg-${color}-500 scale-x-0 group-hover:scale-x-100 transition-transform origin-left`} />
+      {showTooltip && tooltip && (
+        <div className="absolute z-10 top-full left-0 mt-2 bg-white p-3 rounded-lg shadow-lg border border-neutral-200 text-xs max-w-xs">
+          {tooltip}
+        </div>
+      )}
     </div>
-    <div className={`absolute -bottom-10 -right-10 w-40 h-40 bg-${color}-50/30 rounded-full blur-[80px] opacity-0 group-hover:opacity-100 transition-opacity duration-700`} />
+  );
+};
+
+const FilterSelect = ({ label, value, onChange, options, icon: Icon = Filter }) => (
+  <div className="relative">
+    <Icon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+    <select 
+      value={value || ''}
+      onChange={e => onChange(e.target.value || null)}
+      className="appearance-none bg-white border border-neutral-200 rounded-xl px-4 py-2 pr-10 text-sm font-medium text-neutral-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 pl-10"
+    >
+      <option value="">{label}</option>
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={16} />
+  </div>
+);
+
+const ErrorAlert = ({ message, onRetry }) => (
+  <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-4 text-red-800 max-w-lg mx-auto text-center">
+    <AlertTriangle size={48} />
+    <p className="text-lg font-medium">{message}</p>
+    <button 
+      onClick={onRetry}
+      className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+    >
+      Tentar Novamente
+    </button>
   </div>
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CORE DASHBOARD - SNEAELIS INTELLIGENCE
+// COMPONENTE DO MAPA – VERSÃO CORRIGIDA E ROBUSTA
 // ─────────────────────────────────────────────────────────────────────────────
+const BrazilMap = ({ 
+  features, 
+  data, 
+  selectedUf, 
+  onSelectUf, 
+  hoveredState, 
+  onHoverUf, 
+  maxValue 
+}) => {
+  const containerRef = useRef(null);
+  const svgRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [tooltip, setTooltip] = useState(null);
+  const [mapReady, setMapReady] = useState(false);
 
-export default function DashboardSneaElis() {
-  const navigate = useNavigate();
-  
-  // ─── ESTADOS DE DADOS (SUPABASE + GEO) ───
-  const [rawData, setRawData] = useState([]);
-  const [mapFeatures, setMapFeatures] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date().toLocaleTimeString());
-  
-  // ─── FILTRAGEM E INTERAÇÃO ───
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedUf, setSelectedUf] = useState(null);
-  const [selectedSituacao, setSelectedSituacao] = useState(null);
-  const [selectedAno, setSelectedAno] = useState(null);
-  const [activeHover, setActiveHover] = useState(null);
+  // ResizeObserver com debounce
+  useEffect(() => {
+    let timeoutId;
 
-  // ─── BOOTSTRAP DO SISTEMA ───
-  const bootDashboard = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1. Carregar GeoJSON do Brasil (D3 Engine)
-      const geoRes = await fetch(GEO_JSON_BR);
-      const geoJson = await geoRes.json();
-      setMapFeatures(geoJson.features);
-
-      // 2. Carregar Dados Supabase (Com paginação para > 1000 registros)
-      let clusterData = [];
-      let offset = 0;
-      let keepFetching = true;
-
-      while (keepFetching) {
-        const { data, error } = await supabase
-          .from('formalizacoes')
-          .select('*')
-          .order('id', { ascending: true })
-          .range(offset, offset + 999);
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          keepFetching = false;
-        } else {
-          clusterData = [...clusterData, ...data];
-          offset += 1000;
-          if (data.length < 1000) keepFetching = false;
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        if (clientWidth > 50 && clientHeight > 50) {
+          setDimensions({ width: clientWidth, height: clientHeight });
         }
       }
+    };
 
-      // 3. Sanitização e Normalização de Campos (SP, UF, VALOR)
-      const normalized = clusterData.map(item => {
-        const rawValor = item["VALOR REPASSE"] || 0;
-        return {
-          ...item,
-          valor: typeof rawValor === 'string' ? parseFloat(rawValor.replace(/[^\d.-]/g, '')) || 0 : rawValor,
-          uf: String(item.UF || 'ND').toUpperCase().trim().replace('.0', ''),
-          situacao: String(item.SITUACIONAL || item["SITUACIONAL "] || 'PENDENTE').trim().toUpperCase(),
-          ano: String(item.ANO || 'S/A').replace('.0', ''),
-          processo: String(item.PROCESSO || '—').replace('.0', ''),
-          entidade: (item.ENTIDADE || 'DESCONHECIDA').toUpperCase()
-        };
-      });
+    const debouncedUpdate = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(updateDimensions, 150);
+    };
 
-      setRawData(normalized);
-      setLastUpdate(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error("Critical Engine Failure:", err);
-    } finally {
-      setLoading(false);
+    const resizeObserver = new ResizeObserver(debouncedUpdate);
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+      // Primeira medição imediata
+      updateDimensions();
     }
-  }, []);
 
-  useEffect(() => { bootDashboard(); }, [bootDashboard]);
-
-  // ─── ENGINE DE FILTRAGEM (VÍNCULO MAPA <> TABELA) ───
-  const filteredDataset = useMemo(() => {
-    return rawData.filter(row => {
-      const matchSearch = !searchTerm || Object.values(row).some(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchUf = !selectedUf || row.uf === selectedUf;
-      const matchSit = !selectedSituacao || row.situacao === selectedSituacao;
-      const matchAno = !selectedAno || row.ano === selectedAno;
-      return matchSearch && matchUf && matchSit && matchAno;
-    });
-  }, [rawData, searchTerm, selectedUf, selectedSituacao, selectedAno]);
-
-  // ─── CÁLCULOS ANALÍTICOS ───
-  const analytics = useMemo(() => {
-    const totalRepasse = filteredDataset.reduce((acc, c) => acc + c.valor, 0);
-    const count = filteredDataset.length;
-    
-    // Distribuições
-    const ufAgg = filteredDataset.reduce((acc, r) => { acc[r.uf] = (acc[r.uf] || 0) + 1; return acc; }, {});
-    const sitAgg = filteredDataset.reduce((acc, r) => { acc[r.situacao] = (acc[r.situacao] || 0) + 1; return acc; }, {});
-    const anoAgg = filteredDataset.reduce((acc, r) => { acc[r.ano] = (acc[r.ano] || 0) + r.valor; return acc; }, {});
-
-    const concluded = filteredDataset.filter(r => ['SIM', 'PAGO', 'CONCLUÍDO', 'FINALIZADO'].includes(r.situacao)).length;
-
-    return {
-      totalRepasse,
-      count,
-      avgValue: count > 0 ? totalRepasse / count : 0,
-      efficiency: count > 0 ? ((concluded / count) * 100).toFixed(1) : 0,
-      rankingUf: Object.entries(ufAgg).map(([uf, qtd]) => ({ uf, qtd })).sort((a,b) => b.qtd - a.qtd),
-      statusData: Object.entries(sitAgg).map(([name, value]) => ({ name, value })),
-      yearlyTrends: Object.entries(anoAgg).map(([ano, valor]) => ({ ano, valor })).sort((a,b) => a.ano - b.ano),
-      maxUfValue: Math.max(...Object.values(ufAgg), 0),
-      menus: {
-        anos: [...new Set(rawData.map(r => r.ano))].sort().reverse(),
-        status: [...new Set(rawData.map(r => r.situacao))].sort()
+    return () => {
+      clearTimeout(timeoutId);
+      if (containerRef.current) {
+        resizeObserver.unobserve(containerRef.current);
       }
     };
-  }, [filteredDataset, rawData]);
+  }, []);
 
-  // ─── MOTOR D3 DE MAPA (ESTADOS VETORIAIS) ───
-  // Vincula a sigla do GeoJSON com a sigla do Supabase
-  const renderBrazilMap = () => {
-    if (!mapFeatures) return null;
+  // Controla quando o mapa está pronto para renderizar
+  useEffect(() => {
+    if (dimensions.width > 100 && dimensions.height > 100 && features?.length > 0) {
+      setMapReady(true);
+    }
+  }, [dimensions, features]);
 
-    const projection = geoMercator().center([-55, -15]).scale(780).translate([400, 300]);
-    const pathGenerator = geoPath().projection(projection);
-    const colorScale = scaleLinear().domain([0, analytics.maxUfValue || 1]).range(["#f8fafc", "#2563eb"]);
-
+  if (!mapReady || !features || features.length === 0) {
     return (
-      <svg viewBox="0 0 800 650" className="w-full h-full drop-shadow-2xl">
+      <div className="h-full flex flex-col items-center justify-center text-neutral-500 space-y-4">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-b-transparent"></div>
+        <p className="text-xl font-medium">Carregando mapa do Brasil...</p>
+        <p className="text-sm opacity-70">Aguarde a leitura do GeoJSON e ajuste automático de tamanho</p>
+      </div>
+    );
+  }
+
+  // Projeção com margens de segurança
+  const projection = geoMercator().fitExtent(
+    [[40, 40], [dimensions.width - 40, dimensions.height - 40]],
+    { type: 'FeatureCollection', features }
+  );
+
+  const pathGenerator = geoPath().projection(projection);
+
+  const colorScale = scaleLinear()
+    .domain([0, maxValue || 1])
+    .range(['#e0f2fe', '#1e40af']);
+
+  return (
+    <div 
+      ref={containerRef} 
+      className="w-full h-full relative overflow-hidden bg-gradient-to-br from-slate-50 to-white"
+    >
+      <svg
+        ref={svgRef}
+        width={dimensions.width}
+        height={dimensions.height}
+        viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full h-full"
+      >
         <g>
-          {mapFeatures.map((feature, i) => {
-            const sigla = (feature.properties.sigla || feature.properties.UF || "").toUpperCase();
-            const ufMatch = analytics.rankingUf.find(u => u.uf === sigla);
+          {features.map((feature, index) => {
+            const siglaRaw = feature.properties.SIGLA || feature.properties.sigla || feature.properties.UF || '';
+            const sigla = String(siglaRaw).toUpperCase().trim();
+
+            const ufData = data.find(u => u.uf === sigla);
+            const count = ufData?.qtd ?? 0;
             const isSelected = selectedUf === sigla;
-            const isHovered = activeHover === sigla;
+            const isHovered = hoveredState === sigla;
+
+            const fillColor = isSelected 
+              ? '#1d4ed8' 
+              : isHovered 
+                ? '#60a5fa' 
+                : count > 0 
+                  ? colorScale(count) 
+                  : '#f1f5f9';
 
             return (
               <path
-                key={`${sigla}-${i}`}
+                key={`state-${sigla}-${index}`}
                 d={pathGenerator(feature)}
-                fill={isSelected ? SNEAELIS_UI.sidebar : isHovered ? SNEAELIS_UI.accent : (ufMatch ? colorScale(ufMatch.qtd) : "#f1f5f9")}
-                stroke={isSelected ? "#fff" : "#cbd5e1"}
-                strokeWidth={isSelected ? 3 : 0.7}
-                className="transition-all duration-300 cursor-pointer outline-none"
-                onMouseEnter={() => setActiveHover(sigla)}
-                onMouseLeave={() => setActiveHover(null)}
-                onClick={() => setSelectedUf(selectedUf === sigla ? null : sigla)}
+                fill={fillColor}
+                stroke="#94a3b8"
+                strokeWidth={isSelected || isHovered ? 2 : 0.7}
+                className="transition-all duration-200 ease-out cursor-pointer hover:brightness-110"
+                onClick={() => onSelectUf(isSelected ? null : sigla)}
+                onMouseEnter={(e) => {
+                  onHoverUf(sigla);
+                  const rect = svgRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setTooltip({
+                      x: e.clientX - rect.left + 20,
+                      y: e.clientY - rect.top + 20,
+                      sigla,
+                      count
+                    });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  const rect = svgRef.current?.getBoundingClientRect();
+                  if (rect && tooltip) {
+                    setTooltip(prev => ({
+                      ...prev,
+                      x: e.clientX - rect.left + 20,
+                      y: e.clientY - rect.top + 20
+                    }));
+                  }
+                }}
+                onMouseLeave={() => {
+                  onHoverUf(null);
+                  setTooltip(null);
+                }}
               />
             );
           })}
         </g>
       </svg>
-    );
-  };
 
-  // ─── CONFIGURAÇÃO DA TABELA TANSTACK ───
-  const columns = useMemo(() => [
-    { accessorKey: 'processo', header: 'PROTOCOLO', cell: i => <span className="font-mono text-slate-400 font-black">#{i.getValue()}</span> },
-    { accessorKey: 'entidade', header: 'INSTITUIÇÃO BENEFICIÁRIA', cell: i => <div className="max-w-[220px] truncate font-black text-slate-800 text-[10px] uppercase italic leading-none">{i.getValue()}</div> },
-    { accessorKey: 'uf', header: 'UF', cell: i => <span className="bg-blue-600 text-white px-3 py-1 rounded-lg font-black text-[10px] shadow-sm">{i.getValue()}</span> },
-    { 
-      accessorKey: 'valor', 
-      header: 'INVESTIMENTO', 
-      cell: i => <span className="font-black text-emerald-600 tabular-nums text-[12px]">
-        {i.getValue().toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-      </span> 
-    },
-    { 
-      accessorKey: 'situacao', 
-      header: 'STATUS',
-      cell: i => {
-        const val = i.getValue();
-        const done = ['SIM', 'PAGO', 'CONCLUÍDO'].includes(val);
-        return (
-          <span className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.2em] border shadow-sm
-            ${done ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-            {val}
-          </span>
-        );
-      }
-    }
-  ], []);
-
-  const table = useReactTable({
-    data: filteredDataset,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 8 } }
-  });
-
-  if (loading) return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617] relative">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent animate-pulse" />
-      <div className="h-32 w-32 rounded-[2.5rem] border-[12px] border-blue-500/5 border-t-blue-500 animate-spin mb-10" />
-      <h2 className="text-white font-black text-3xl italic tracking-[0.5em] animate-pulse">SNEAELIS HUB</h2>
-      <p className="text-blue-500 text-[10px] mt-4 font-black uppercase tracking-[0.8em]">Acessando Cluster Supabase 2026</p>
-    </div>
-  );
-
-  return (
-    <div className="h-screen bg-[#f8fafc] flex w-full font-sans text-slate-900 overflow-hidden select-none">
-      
-      {/* SIDEBAR DESIGN SYSTEM */}
-      <aside className="w-24 lg:w-80 bg-slate-950 flex flex-col z-[100] shadow-[15px_0_60px_-15px_rgba(0,0,0,0.4)] transition-all duration-700">
-        <div className="p-10 border-b border-white/5 flex items-center gap-6">
-          <div className="bg-gradient-to-tr from-blue-600 to-blue-400 p-4 rounded-[1.6rem] shadow-2xl shadow-blue-500/40 shrink-0 transform hover:scale-110 transition-transform">
-            <Layers className="text-white" size={32} />
-          </div>
-          <div className="hidden lg:block">
-            <h1 className="text-white font-black text-2xl italic tracking-tighter leading-none">SNEAELIS</h1>
-            <p className="text-[9px] text-blue-500 font-black uppercase tracking-[0.5em] mt-2 flex items-center gap-2">
-              <CloudSync size={10} className="animate-pulse" /> Intelligence
-            </p>
+      {/* Tooltip relativo ao container SVG */}
+      {tooltip && (
+        <div
+          className="absolute pointer-events-none bg-white/95 backdrop-blur-md px-5 py-3 rounded-xl shadow-2xl border border-slate-200 text-sm z-50 min-w-[160px]"
+          style={{
+            left: `${tooltip.x}px`,
+            top: `${tooltip.y}px`,
+            transform: 'translate(-50%, -120%)'
+          }}
+        >
+          <div className="font-bold text-slate-900 text-base">{tooltip.sigla}</div>
+          <div className="text-slate-700 mt-1 flex items-center gap-2">
+            <span className="font-semibold">{tooltip.count.toLocaleString('pt-BR')}</span>
+            <span>processos</span>
           </div>
         </div>
+      )}
+    </div>
+  );
+};
 
-        <nav className="flex-1 p-8 space-y-4">
-          <button className="w-full flex items-center gap-5 p-5 rounded-[1.5rem] bg-blue-600 text-white font-black shadow-2xl shadow-blue-900/30">
-            <LayoutDashboard size={24} /> <span className="hidden lg:block text-[12px] uppercase tracking-widest">Painel BI</span>
-          </button>
-          <button onClick={() => navigate('/tabela')} className="w-full flex items-center gap-5 p-5 rounded-[1.5rem] text-slate-500 hover:bg-white/5 hover:text-white transition-all font-bold">
-            <TableIcon size={24} /> <span className="hidden lg:block text-[12px] uppercase tracking-widest">Base Gerencial</span>
-          </button>
-          <button className="w-full flex items-center gap-5 p-5 rounded-[1.5rem] text-slate-500 hover:bg-white/5 transition-all font-bold">
-            <Target size={24} /> <span className="hidden lg:block text-[12px] uppercase tracking-widest">Metas Hub</span>
-          </button>
-        </nav>
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENTES RESTANTES (mantidos iguais, mas com pequenas otimizações)
+// ─────────────────────────────────────────────────────────────────────────────
 
-        <div className="p-10 border-t border-white/5">
-           <div className="hidden lg:flex items-center gap-4 p-5 bg-white/5 rounded-[1.2rem] border border-white/5">
-              <div className="h-11 w-11 rounded-full bg-blue-500 flex items-center justify-center font-black text-white italic shadow-lg">PD</div>
-              <div className="min-w-0">
-                <p className="text-white text-[12px] font-black truncate leading-none">Pedro Dias</p>
-                <p className="text-slate-500 text-[9px] font-black uppercase mt-1">IT Analyst Pro</p>
-              </div>
+const UfRanking = ({ ranking, selectedUf, onSelectUf, maxValue }) => (
+  <div className="space-y-3 overflow-y-auto pr-4 h-full custom-scrollbar">
+    {ranking.map(({ uf, qtd }) => {
+      const isSelected = selectedUf === uf;
+      const percentage = maxValue > 0 ? (qtd / maxValue) * 100 : 0;
+      return (
+        <div 
+          key={uf}
+          onClick={() => onSelectUf(isSelected ? null : uf)}
+          className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all duration-300
+            ${isSelected ? 'bg-blue-50 border border-blue-200 shadow-md' : 'hover:bg-neutral-50 hover:shadow-sm'}`}
+        >
+          <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center font-bold text-lg text-neutral-700 shadow-sm">
+            {uf}
+          </div>
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm font-medium text-neutral-600">Processos</span>
+              <span className="text-sm font-bold text-neutral-800">{qtd.toLocaleString('pt-BR')}</span>
             </div>
+            <div className="h-2.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-600 transition-all duration-700 ease-out"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    })}
+    {ranking.length === 0 && (
+      <div className="text-center text-neutral-500 py-12 italic">Nenhum dado para exibir no ranking</div>
+    )}
+  </div>
+);
+
+const SituacaoPieChart = ({ data, selectedSituacao, onSelectSituacao, colors }) => {
+  if (data.length === 0) return <div className="h-full flex items-center justify-center text-neutral-500">Sem dados</div>;
+
+  return (
+    <ResponsiveContainer width="100%" height="100%" minHeight={320}>
+      <PieChart>
+        <Pie
+          data={data}
+          cx="50%"
+          cy="50%"
+          innerRadius="55%"
+          outerRadius="85%"
+          paddingAngle={3}
+          dataKey="value"
+          label={({ name, percent }) => percent > 0.05 ? `${name} ${(percent * 100).toFixed(0)}%` : ''}
+          labelLine={false}
+        >
+          {data.map((entry, index) => (
+            <Cell 
+              key={`cell-${index}`} 
+              fill={colors[index % colors.length]}
+              stroke={selectedSituacao === entry.name ? '#2563eb' : 'none'}
+              strokeWidth={4}
+              onClick={() => onSelectSituacao(selectedSituacao === entry.name ? null : entry.name)}
+              className="cursor-pointer transition-opacity duration-200 hover:opacity-90"
+            />
+          ))}
+        </Pie>
+        <RechartsTooltip />
+        <Legend verticalAlign="bottom" height={50} iconSize={12} />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+};
+
+const YearlyLineChart = ({ data }) => {
+  if (data.length === 0) return <div className="h-full flex items-center justify-center text-neutral-500">Sem dados anuais</div>;
+
+  const formatNumber = (value) => value.toLocaleString('pt-BR');
+
+  return (
+    <ResponsiveContainer width="100%" height="100%" minHeight={320}>
+      <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis dataKey="ano" stroke="#64748b" />
+        <YAxis stroke="#64748b" tickFormatter={formatNumber} />
+        <RechartsTooltip formatter={(value) => `R$ ${value.toLocaleString('pt-BR')}`} />
+        <Legend verticalAlign="top" height={40} />
+        <Line type="monotone" dataKey="valor" stroke="#2563eb" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 8 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+};
+
+const AdvancedDataTable = ({ data, columns, globalFilter, setGlobalFilter }) => {
+  const table = useReactTable({
+    data,
+    columns,
+    state: { globalFilter },
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: DEFAULT_PAGE_SIZE } },
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="overflow-auto flex-1">
+        <table className="w-full text-sm text-left text-neutral-700 divide-y divide-neutral-200">
+          <thead className="bg-neutral-50 sticky top-0 z-10">
+            {table.getHeaderGroups().map(headerGroup => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map(header => (
+                  <th 
+                    key={header.id}
+                    className="px-6 py-4 font-semibold text-neutral-600 uppercase tracking-wider cursor-pointer hover:text-blue-600"
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() && (header.column.getIsSorted() === 'desc' ? ' ▼' : ' ▲')}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {table.getRowModel().rows.length > 0 ? (
+              table.getRowModel().rows.map(row => (
+                <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
+                  {row.getVisibleCells().map(cell => (
+                    <td key={cell.id} className="px-6 py-4 whitespace-nowrap">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length} className="text-center py-12 text-neutral-500 italic">
+                  Nenhum registro encontrado com os filtros aplicados
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-between items-center p-5 border-t border-neutral-200 bg-neutral-50">
+        <button 
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+          className="px-5 py-2 bg-white border border-neutral-300 rounded-lg disabled:opacity-40 hover:bg-neutral-100 flex items-center gap-2"
+        >
+          <ChevronLeft size={16} /> Anterior
+        </button>
+        <span className="text-sm font-medium text-neutral-600">
+          Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount() || 1}
+        </span>
+        <button 
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+          className="px-5 py-2 bg-white border border-neutral-300 rounded-lg disabled:opacity-40 hover:bg-neutral-100 flex items-center gap-2"
+        >
+          Próxima <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD PRINCIPAL
+// ─────────────────────────────────────────────────────────────────────────────
+export default function DashboardSneaElis() {
+  const navigate = useNavigate();
+  const [data, setData] = useState([]);
+  const [geoFeatures, setGeoFeatures] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedState, setSelectedState] = useState(null);
+  const [selectedSituacao, setSelectedSituacao] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [hoveredState, setHoveredState] = useState(null);
+  const [tableGlobalFilter, setTableGlobalFilter] = useState('');
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const geoRes = await fetch(GEO_JSON_URL);
+      if (!geoRes.ok) throw new Error(`GeoJSON: ${geoRes.status}`);
+      const geoJson = await geoRes.json();
+      setGeoFeatures(geoJson.features || []);
+
+      let allData = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: chunk, error } = await supabase
+          .from('formalizacoes')
+          .select('*')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        allData = [...allData, ...chunk];
+        hasMore = chunk.length === pageSize;
+        page++;
+      }
+
+      const normalized = allData.map(item => {
+        let anoStr = String(item.ANO || item.ano || 'ND').trim();
+        const ano = /\d{4}/.test(anoStr) ? parseInt(anoStr, 10).toString() : 'ND';
+
+        // ──── Correção aqui ────
+        const situacionalRaw = item['SITUACIONAL '] || item.SITUACIONAL || '';
+        let situacao = String(situacionalRaw).trim().toUpperCase();
+
+        // Opcional: padronizar alguns valores parecidos
+        if (situacao.includes('PUBLICADA SEM'))    situacao = 'PUBLICADA SEM CUSTOS';
+        if (situacao.includes('PUBLICADA COM'))    situacao = 'PUBLICADA COM CUSTOS';
+        if (situacao.includes('PENDENTE DE PUB'))  situacao = 'PENDENTE DE PUBLICAÇÃO';
+        if (situacao.includes('CONCLUÍDA') || situacao.includes('CONCLUIDA')) situacao = 'CONCLUÍDA';
+
+        return {
+          ...item,
+          valor: parseFloat(String(item['VALOR REPASSE'] || 0).replace(/[^\d.-]/g, '')) || 0,
+          uf: String(item.UF || item.uf || 'ND').toUpperCase().trim(),
+          situacao,   // ← agora vem correto
+          ano,
+          processo: String(item.PROCESSO || item.processo || 'ND').trim(),
+          entidade: String(item.ENTIDADE || item.entidade || 'DESCONHECIDA').trim()
+        };
+      });
+
+      setData(normalized);
+    } catch (err) {
+      setError(err.message || 'Falha ao carregar dados');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const filteredData = useMemo(() => 
+    data.filter(row => {
+      const searchMatch = !searchQuery || Object.values(row).some(v => 
+        String(v).toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      const stateMatch = !selectedState || row.uf === selectedState;
+      const situacaoMatch = !selectedSituacao || row.situacao === selectedSituacao;
+      const yearMatch = !selectedYear || row.ano === selectedYear;
+      return searchMatch && stateMatch && situacaoMatch && yearMatch;
+    }),
+  [data, searchQuery, selectedState, selectedSituacao, selectedYear]);
+
+  const metrics = useMemo(() => {
+    const totalValue = filteredData.reduce((sum, r) => sum + r.valor, 0);
+    const totalCount = filteredData.length;
+    const completed = filteredData.filter(r => COMPLETED_STATUSES.includes(r.situacao)).length;
+    const efficiency = totalCount > 0 ? (completed / totalCount * 100).toFixed(1) : '0.0';
+
+    const stateAgg = filteredData.reduce((acc, r) => {
+      acc[r.uf] = (acc[r.uf] || 0) + 1;
+      return acc;
+    }, {});
+
+    const situacaoAgg = filteredData.reduce((acc, r) => {
+      acc[r.situacao] = (acc[r.situacao] || 0) + 1;
+      return acc;
+    }, {});
+
+    const yearAgg = filteredData.reduce((acc, r) => {
+      acc[r.ano] = (acc[r.ano] || 0) + r.valor;
+      return acc;
+    }, {});
+
+    const stateRanking = Object.entries(stateAgg)
+      .map(([uf, qtd]) => ({ uf, qtd }))
+      .sort((a, b) => b.qtd - a.qtd);
+
+    const situacaoData = Object.entries(situacaoAgg)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const yearlyData = Object.entries(yearAgg)
+      .map(([ano, valor]) => ({ ano, valor }))
+      .sort((a, b) => (parseInt(a.ano) || 9999) - (parseInt(b.ano) || 9999));
+
+    let yearlyGrowth = 'N/A';
+    let growthColor = 'text-neutral-500';
+    let growthIcon = <HelpCircle size={12} />;
+    if (yearlyData.length >= 2) {
+      const last = yearlyData[yearlyData.length - 1].valor;
+      const prev = yearlyData[yearlyData.length - 2].valor;
+      const growth = prev > 0 ? ((last - prev) / prev * 100).toFixed(1) : '∞';
+      yearlyGrowth = `${growth}%`;
+      growthColor = parseFloat(growth) > 0 ? 'text-green-600' : 'text-red-600';
+      growthIcon = parseFloat(growth) > 0 ? <ArrowUpRight size={12} /> : <TrendingDown size={12} />;
+    }
+
+    const maxStateValue = Math.max(...Object.values(stateAgg), 1);
+
+    const filterOptions = {
+      years: [...new Set(data.map(r => r.ano).filter(Boolean))].sort((a,b) => b.localeCompare(a)),
+      situacoes: [...new Set(data.map(r => r.situacao).filter(Boolean))].sort()
+    };
+
+    return {
+      totalValue: totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }),
+      totalCount: totalCount.toLocaleString('pt-BR'),
+      averageValue: totalCount > 0 ? (totalValue / totalCount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00',
+      efficiency: `${efficiency}%`,
+      yearlyGrowth,
+      growthColor,
+      growthIcon,
+      stateRanking,
+      situacaoData,
+      yearlyData,
+      maxStateValue,
+      filterOptions
+    };
+  }, [filteredData, data]);
+
+  const tableColumns = useMemo(() => [
+    { accessorKey: 'processo', header: 'Processo', cell: ({ getValue }) => <span className="font-mono">{getValue()}</span> },
+    { accessorKey: 'entidade', header: 'Entidade', cell: ({ getValue }) => <span className="truncate max-w-xs">{getValue()}</span> },
+    { accessorKey: 'uf', header: 'UF', cell: ({ getValue }) => <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">{getValue()}</span> },
+    { accessorKey: 'valor', header: 'Valor', cell: ({ getValue }) => getValue().toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+    { 
+      accessorKey: 'situacao', 
+      header: 'Situação',
+      cell: ({ getValue }) => {
+        const v = getValue();
+        const done = COMPLETED_STATUSES.includes(v);
+        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${done ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{v}</span>;
+      }
+    },
+    { accessorKey: 'ano', header: 'Ano' }
+  ], []);
+
+  const exportToExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Formalizacoes");
+    XLSX.writeFile(wb, `SNEAELIS_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
+          <h2 className="text-2xl font-bold text-gray-700">Carregando SNEAELIS Intelligence</h2>
+          <p className="text-gray-500 mt-2">Acessando Supabase e GeoJSON...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <ErrorAlert message={error} onRetry={loadData} />;
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* SIDEBAR */}
+      <aside className="w-72 bg-slate-950 text-white flex flex-col">
+        <div className="p-6 border-b border-slate-800 flex items-center gap-4">
+          <Layers className="text-blue-500" size={32} />
+          <div>
+            <h1 className="text-2xl font-bold">SNEAELIS</h1>
+            <p className="text-sm text-slate-400">Intelligence PRO</p>
+          </div>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <button className="w-full flex items-center gap-4 p-4 rounded-xl bg-blue-600 text-white font-medium">
+            <LayoutDashboard size={20} /> Dashboard
+          </button>
+          <button onClick={() => navigate('/tabela')} className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-800 transition-colors">
+            <TableIcon size={20} /> Tabela Completa
+          </button>
+          {/* outros botões... */}
+        </nav>
+        <div className="p-6 border-t border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold">PD</div>
+            <div>
+              <p className="font-medium">Pedro Dias</p>
+              <p className="text-sm text-slate-400">Analista Sênior</p>
+            </div>
+          </div>
         </div>
       </aside>
 
-      {/* CORE CONTENT CANVAS */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-50 custom-scrollbar">
-        
-        {/* TOPBAR COMMAND CENTER */}
-        <header className="bg-white/95 backdrop-blur-3xl border-b border-slate-200 p-8 sticky top-0 z-[90] flex flex-col lg:flex-row items-center justify-between gap-8 shadow-sm">
-          <div className="flex-1 w-full max-w-2xl relative group">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar por protocolo, UF ou entidade..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-100/50 border-2 border-transparent rounded-[1.5rem] py-4 pl-16 pr-8 text-xs font-black outline-none focus:bg-white focus:border-blue-500/20 transition-all shadow-inner"
+      {/* MAIN CONTENT */}
+      <main className="flex-1 overflow-y-auto p-8 space-y-8">
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="relative flex-1 max-w-2xl">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Buscar por processo, entidade, UF ou situação..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-[1.4rem] shadow-2xl">
-              <select className="bg-transparent text-[11px] font-black uppercase px-5 py-2.5 text-white outline-none cursor-pointer" value={selectedAno || ''} onChange={e => setSelectedAno(e.target.value || null)}>
-                <option value="" className="text-black">Anos</option>
-                {analytics.menus.anos.map(a => <option key={a} value={a} className="text-black">{a}</option>)}
-              </select>
-              <div className="h-6 w-[1px] bg-white/20" />
-              <select className="bg-transparent text-[11px] font-black uppercase px-5 py-2.5 text-white outline-none cursor-pointer" value={selectedSituacao || ''} onChange={e => setSelectedSituacao(e.target.value || null)}>
-                <option value="" className="text-black">Status</option>
-                {analytics.menus.status.map(s => <option key={s} value={s} className="text-black">{s}</option>)}
-              </select>
-            </div>
-            <button onClick={() => { setSearchTerm(''); setSelectedUf(null); setSelectedSituacao(null); setSelectedAno(null); }} className="p-4 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:bg-rose-50 hover:text-rose-600 transition-all shadow-sm">
+          <div className="flex items-center gap-4 flex-wrap">
+            <FilterSelect label="Ano" value={selectedYear} onChange={setSelectedYear} options={metrics.filterOptions.years} />
+            <FilterSelect label="Situação" value={selectedSituacao} onChange={setSelectedSituacao} options={metrics.filterOptions.situacoes} />
+            <button onClick={() => {
+              setSearchQuery('');
+              setSelectedState(null);
+              setSelectedSituacao(null);
+              setSelectedYear(null);
+              setTableGlobalFilter('');
+            }} className="p-3 bg-gray-100 rounded-xl hover:bg-gray-200">
               <RefreshCw size={20} />
             </button>
-            <button onClick={() => {
-              const ws = XLSX.utils.json_to_sheet(filteredDataset);
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "SNEAELIS_BI");
-              XLSX.writeFile(wb, `SNEAELIS_REPORT_${new Date().toLocaleDateString()}.xlsx`);
-            }} className="flex items-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-[1.5rem] font-black text-[11px] uppercase hover:bg-emerald-700 shadow-xl shadow-emerald-900/30 transition-all">
-              <FileText size={20} /> Relatório
+            <button onClick={exportToExcel} className="px-6 py-3 bg-blue-600 text-white rounded-xl flex items-center gap-2 hover:bg-blue-700">
+              <Download size={20} /> Exportar
             </button>
           </div>
         </header>
 
-        {/* ANALYTICS GRID CONTAINER */}
-        <div className="p-10 space-y-10 max-w-[1700px] mx-auto w-full">
-          
-          {/* KPI LAYER SECTION */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            <KpiCard icon={DollarSign} title="Volume Financeiro" value={analytics.totalRepasse.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} growth="+12.4%" color="emerald" />
-            <KpiCard icon={Box} title="Protocolos Ativos" value={analytics.count.toLocaleString('pt-BR')} color="blue" />
-            <KpiCard icon={Target} title="Taxa Entrega" value={`${analytics.efficiency}%`} color="indigo" />
-            <KpiCard icon={MapPin} title="Abrangência" value={analytics.rankingUf.length} active={!!selectedUf} color="amber" onClick={() => setSelectedUf(null)} />
+        {/* KPIs */}
+        <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+          <KpiCard icon={DollarSign} title="Valor Total" value={metrics.totalValue} color="success" />
+          <KpiCard icon={Box} title="Processos" value={metrics.totalCount} color="primary" />
+          <KpiCard icon={Target} title="Eficiência" value={metrics.efficiency} color="warning" />
+          <KpiCard icon={MapPin} title="Estados" value={metrics.stateRanking.length} isActive={!!selectedState} onClick={() => setSelectedState(null)} />
+          <KpiCard icon={TrendingUp} title="Evolução" value={metrics.yearlyGrowth} color="info" subtitle={{ text: 'vs anterior', color: metrics.growthColor, icon: metrics.growthIcon }} />
+        </section>
+
+        {/* MAPA + RANKING */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white rounded-2xl shadow-lg p-6 h-[650px] flex flex-col">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
+              <Globe className="text-blue-600" size={24} /> Mapa do Brasil
+            </h3>
+            <BrazilMap
+              features={geoFeatures}
+              data={metrics.stateRanking}
+              selectedUf={selectedState}
+              onSelectUf={setSelectedState}
+              hoveredState={hoveredState}
+              onHoverUf={setHoveredState}
+              maxValue={metrics.maxStateValue}
+            />
           </div>
 
-          {/* GEOINT LAYER SECTION (MAPA E RANKING) */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 items-start">
-            
-            {/* D3 MAP CORE (7/12) */}
-            <div className="xl:col-span-7 bg-white rounded-[3.5rem] p-10 shadow-sm border border-slate-100 flex flex-col h-[580px] relative overflow-hidden group">
-              <div className="flex justify-between items-start mb-8 z-10">
-                <div>
-                  <h3 className="text-2xl font-black text-slate-800 tracking-tighter italic uppercase flex items-center gap-4">
-                    <Globe className="text-blue-600 animate-spin-slow" size={32} /> Visão Territorial
-                  </h3>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.4em] mt-2">Navegação em Tempo Real por UF</p>
-                </div>
-                {selectedUf && (
-                  <div className="bg-slate-950 text-white px-8 py-3 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4">
-                    <MapPin size={16} className="text-blue-500" /> Vínculo Ativo: {selectedUf}
-                  </div>
-                )}
-              </div>
+          <div className="bg-white rounded-2xl shadow-lg p-6 h-[650px] flex flex-col">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
+              <BarChart3 className="text-indigo-600" size={24} /> Ranking UF
+            </h3>
+            <UfRanking
+              ranking={metrics.stateRanking}
+              selectedUf={selectedState}
+              onSelectUf={setSelectedState}
+              maxValue={metrics.maxStateValue}
+            />
+          </div>
+        </section>
 
-              <div className="flex-1 bg-slate-50/50 rounded-[3.5rem] overflow-hidden relative border border-slate-200 shadow-inner flex items-center justify-center p-6">
-                {renderBrazilMap()}
-                
-                {activeHover && (
-                  <div className="absolute top-10 right-10 bg-slate-950/95 backdrop-blur-2xl text-white px-10 py-6 rounded-[2rem] text-[12px] font-black uppercase tracking-widest shadow-3xl border border-white/10">
-                    <div className="text-blue-400 mb-2 flex items-center gap-2 font-black italic"><Database size={16}/> {activeHover}</div>
-                    <div className="text-4xl tracking-tighter tabular-nums font-black">{analytics.rankingUf.find(u => u.uf === activeHover)?.qtd || 0} <span className="text-[12px] opacity-40 uppercase tracking-widest">Proc.</span></div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* PERFORMANCE RANKING CORE (5/12) */}
-            <div className="xl:col-span-5 bg-white rounded-[3.5rem] p-10 shadow-sm border border-slate-100 flex flex-col h-[580px]">
-              <div className="flex items-center justify-between mb-10">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-[13px] font-black text-slate-800 uppercase tracking-[0.4em]">Performance Regional</h3>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic leading-none">Ranking Top 15 UF</span>
-                </div>
-                <Activity size={26} className="text-blue-500" />
-              </div>
-              <div className="flex-1 space-y-6 overflow-y-auto pr-8 custom-scrollbar">
-                {analytics.rankingUf.slice(0, 15).map((u, i) => (
-                  <div 
-                    key={u.uf} 
-                    onClick={() => setSelectedUf(selectedUf === u.uf ? null : u.uf)} 
-                    className={`group flex items-center gap-7 p-6 rounded-[2rem] cursor-pointer transition-all duration-500
-                      ${selectedUf === u.uf ? 'bg-slate-950 text-white shadow-3xl scale-[1.03]' : 'hover:bg-slate-50 border border-transparent hover:border-slate-200'}`}
-                  >
-                    <div className={`w-16 h-16 rounded-[1.6rem] flex items-center justify-center font-black text-xl transition-all shadow-md
-                      ${selectedUf === u.uf ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600'}`}>
-                      {u.uf}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-[11px] font-black uppercase tracking-widest opacity-40">Processos</span>
-                        <span className="text-xl font-black tabular-nums">{u.qtd}</span>
-                      </div>
-                      <div className={`h-3 rounded-full ${selectedUf === u.uf ? 'bg-white/10' : 'bg-slate-100 shadow-inner'}`}>
-                        <div 
-                          className={`h-full rounded-full transition-all duration-1000 ease-out ${selectedUf === u.uf ? 'bg-blue-400' : 'bg-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.4)]'}`} 
-                          style={{ width: `${(u.qtd / analytics.maxUfValue) * 100}%` }} 
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* GRÁFICOS */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white rounded-2xl shadow-lg p-6 h-[500px]">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
+              <PieIcon className="text-purple-600" size={24} /> Distribuição de Situações
+            </h3>
+            <SituacaoPieChart
+              data={metrics.situacaoData}
+              selectedSituacao={selectedSituacao}
+              onSelectSituacao={setSelectedSituacao}
+              colors={UI_THEME.colors}
+            />
           </div>
 
-          {/* DRILL-DOWN ANALYTICS LAYER */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 pb-24">
-            
-            {/* STATUS PIE CHART CORE (4/12) */}
-            <div className="lg:col-span-4 bg-white rounded-[3.5rem] p-10 shadow-sm border border-slate-100 h-[560px] flex flex-col group relative overflow-hidden">
-              <h3 className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em] mb-12 flex items-center gap-4">
-                <PieIcon size={20} className="text-indigo-500" /> Status Processual
-              </h3>
-              <div className="flex-1 min-h-0 relative z-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie 
-                      data={analytics.statusData} 
-                      cx="50%" cy="45%" 
-                      innerRadius={95} outerRadius={135} 
-                      paddingAngle={15} 
-                      dataKey="value" 
-                      onClick={(d) => setSelectedSituacao(selectedSituacao === d.name ? null : d.name)}
-                    >
-                      {analytics.statusData.map((e, idx) => (
-                        <Cell 
-                          key={idx} 
-                          fill={SNEAELIS_UI.palette[idx % SNEAELIS_UI.palette.length]} 
-                          strokeWidth={selectedSituacao === e.name ? 15 : 0} 
-                          stroke={SNEAELIS_UI.sidebar} 
-                          cursor="pointer" 
-                          className="outline-none transition-all duration-700 hover:scale-110" 
-                        />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip 
-                      contentStyle={{ borderRadius: '32px', border: 'none', boxShadow: '0 40px 70px -15px rgba(0,0,0,0.5)', fontWeight: '900', fontSize: '11px', padding: '25px', background: '#fff' }} 
-                    />
-                    <Legend iconType="circle" verticalAlign="bottom" wrapperStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px', paddingTop: '40px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+          <div className="bg-white rounded-2xl shadow-lg p-6 h-[500px]">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
+              <LineIcon className="text-green-600" size={24} /> Evolução Anual
+            </h3>
+            <YearlyLineChart data={metrics.yearlyData} />
+          </div>
+        </section>
 
-            {/* SYNC MASTER TABLE CORE (8/12) */}
-            <div className="lg:col-span-8 bg-white rounded-[3.5rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col h-[560px]">
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div className="flex items-center gap-6">
-                  <div className="p-4 bg-white rounded-[1.4rem] shadow-lg text-blue-600 border border-slate-100"><List size={28} /></div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-800 tracking-tighter italic uppercase leading-none">Registros Sincronizados</h3>
-                    <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.4em] mt-3 flex items-center gap-3">
-                       <Zap size={14} className="text-emerald-500 animate-pulse" /> SneaElis Engine v4.9.2
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-white/95 backdrop-blur-3xl border-b border-slate-200 z-10">
-                    {table.getHeaderGroups().map(hg => (
-                      <tr key={hg.id}>
-                        {hg.headers.map(header => (
-                          <th key={header.id} className="px-10 py-6 text-[12px] font-black text-slate-400 uppercase tracking-[0.2em] cursor-pointer hover:text-blue-600 transition-colors" onClick={header.column.getToggleSortingHandler()}>
-                            <div className="flex items-center gap-4">
-                              {flexRender(header.column.columnDef.header, header.getContext())}
-                              <Maximize2 size={14} className="opacity-20" />
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {table.getRowModel().rows.length > 0 ? (
-                      table.getRowModel().rows.map(row => (
-                        <tr key={row.id} className="hover:bg-blue-50/40 transition-all group">
-                          {row.getVisibleCells().map(cell => (
-                            <td key={cell.id} className="px-10 py-6 text-[13px] text-slate-600 font-bold leading-tight truncate transition-colors group-hover:text-blue-900">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan={columns.length} className="h-64 text-center text-slate-300 font-black italic uppercase tracking-[0.5em]">Sem dados vinculados ao filtro</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <footer className="p-10 bg-slate-50 border-t flex flex-col sm:flex-row justify-between items-center gap-10">
-                <div className="flex items-center gap-6">
-                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="p-5 bg-white rounded-[1.5rem] border border-slate-200 disabled:opacity-20 hover:shadow-2xl transition-all"><ChevronLeft size={24} /></button>
-                  <span className="text-[14px] font-black uppercase tracking-widest text-slate-500 italic">Página <span className="text-blue-600">{table.getState().pagination.pageIndex + 1}</span> de {table.getPageCount() || 1}</span>
-                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="p-5 bg-white rounded-[1.5rem] border border-slate-200 disabled:opacity-20 hover:shadow-2xl transition-all"><ChevronRight size={24} /></button>
-                </div>
-                <div className="flex items-center gap-4 px-8 py-4 bg-emerald-50 rounded-[1.4rem] border border-emerald-100 shadow-sm">
-                  <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.8)]" />
-                  <span className="text-[11px] font-black text-emerald-800 uppercase tracking-[0.4em]">Hub Sincronizado</span>
-                </div>
-              </footer>
+        {/* TABELA */}
+        <section className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-xl font-bold flex items-center gap-3">
+              <List className="text-orange-600" size={24} /> Registros Detalhados
+            </h3>
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Filtrar tabela..."
+                value={tableGlobalFilter}
+                onChange={e => setTableGlobalFilter(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
-        </div>
-
-        {/* MASTER FOOTER CORE 2026 */}
-        <footer className="relative mt-auto overflow-hidden bg-slate-950 border-t border-white/5 p-20 lg:p-28 shrink-0">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_20px_rgba(59,130,246,0.5)]" />
-          <div className="absolute -top-48 left-1/2 -translate-x-1/2 w-[1000px] h-[400px] bg-blue-600/10 blur-[200px] rounded-full" />
-
-          <div className="relative z-10 max-w-7xl mx-auto">
-            <div className="flex flex-col items-center gap-16">
-              
-              <div className="flex flex-wrap justify-center gap-x-24 gap-y-10">
-                <div className="flex items-center gap-5">
-                  <div className="relative h-5 w-5">
-                    <span className="animate-ping absolute h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-5 w-5 bg-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.6)]"></span>
-                  </div>
-                  <span className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em]">Live Data Stream</span>
-                </div>
-
-                <div className="flex items-center gap-5 border-x border-white/10 px-24">
-                  <ShieldCheck size={24} className="text-blue-500 shadow-blue-500/40" />
-                </div>
-
-                <div className="flex items-center gap-5">
-                  <Globe size={24} className="text-amber-500 animate-spin-slow" />
-                  <span className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em]">Cluster Hub 2026</span>
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex items-center gap-8 group cursor-default">
-                  <div className="h-px w-20 bg-slate-800 group-hover:w-32 group-hover:bg-blue-500 transition-all duration-1000" />
-                  <h2 className="text-white font-black text-4xl tracking-[1.2em] uppercase italic group-hover:scale-110 transition-all">
-                    SneaElis <span className="text-blue-500">Intelligence</span>
-                  </h2>
-                  <div className="h-px w-20 bg-slate-800 group-hover:w-32 group-hover:bg-blue-500 transition-all duration-1000" />
-                </div>
-                <p className="text-[12px] text-slate-500 font-bold uppercase tracking-[0.8em] opacity-50 flex items-center gap-4 italic leading-none">
-                   Governança e BI • Sistema de Controle Master • v4.9.2 PRO
-                </p>
-              </div>
-
-              <div className="pt-16 border-t border-white/5 w-full flex flex-col md:flex-row justify-between items-center gap-12">
-                <div className="flex flex-col gap-3 text-center md:text-left">
-                  <span className="text-[12px] text-slate-600 font-black uppercase tracking-[0.4em]">© 2026 SneaElis Intelligence Hub. Todos os direitos reservados.</span>
-                  <span className="text-[11px] text-slate-700 font-bold uppercase tracking-widest italic leading-none flex items-center gap-2">
-                    <User size={12} /> Developed by Pedro Dias • Ministério do Esporte • Brasília-DF
-                  </span>
-                </div>
-                <div className="flex gap-14">
-                  <a href="#" className="text-[12px] text-slate-500 hover:text-blue-400 transition-all font-black uppercase tracking-widest hover:-translate-y-1">Segurança</a>
-                  <a href="#" className="text-[12px] text-slate-500 hover:text-blue-400 transition-all font-black uppercase tracking-widest hover:-translate-y-1">Documentação</a>
-                  <a href="#" className="text-[12px] text-slate-500 hover:text-blue-400 transition-all font-black uppercase tracking-widest hover:-translate-y-1">Suporte</a>
-                </div>
-              </div>
-            </div>
+          <div className="h-[600px]">
+            <AdvancedDataTable
+              data={filteredData}
+              columns={tableColumns}
+              globalFilter={tableGlobalFilter}
+              setGlobalFilter={setTableGlobalFilter}
+            />
           </div>
-        </footer>
+        </section>
       </main>
     </div>
   );
