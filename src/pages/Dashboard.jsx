@@ -485,56 +485,60 @@ export default function DashboardSneaElis() {
   const [hoveredState, setHoveredState] = useState(null);
   const [tableGlobalFilter, setTableGlobalFilter] = useState('');
 
-const loadData = useCallback(async () => {
-  setIsLoading(true);
-  try {
-    let allData = [];
-    let page = 0;
-    const pageSize = 500; // Reduzir o tamanho do bloco evita o Time-out
-    let hasMore = true;
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const geoRes = await fetch(GEO_JSON_URL);
+      if (!geoRes.ok) throw new Error(`GeoJSON: ${geoRes.status}`);
+      const geoJson = await geoRes.json();
+      setGeoFeatures(geoJson.features || []);
 
-    while (hasMore) {
-      // O uso do .range() fragmenta a carga em partes menores
-      const { data: chunk, error } = await supabase
-        .from('formalizacoes')
-        .select('*')
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+      let allData = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      
-      allData = [...allData, ...chunk];
-      hasMore = chunk.length === pageSize;
-      page++;
-    }
+      while (hasMore) {
+        const { data: chunk, error } = await supabase
+          .from('formalizacoes')
+          .select('*')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        allData = [...allData, ...chunk];
+        hasMore = chunk.length === pageSize;
+        page++;
+      }
 
-      const normalized = allData.map(item => {
-        let anoStr = String(item.ANO || item.ano || 'ND').trim();
-        const ano = /\d{4}/.test(anoStr) ? parseInt(anoStr, 10).toString() : 'ND';
+    const normalized = allData.map(item => {
+      let anoStr = String(item.ANO || item.ano || 'ND').trim();
+      const ano = /\d{4}/.test(anoStr) ? parseInt(anoStr, 10).toString() : 'ND';
 
-        // ──── Correção aqui ────
-        const situacionalRaw = item['SITUACIONAL '] || item.SITUACIONAL || '';
-        let situacao = String(situacionalRaw).trim().toUpperCase();
+      // ──── Correção aqui ────
+      const situacionalRaw = item['SITUACIONAL '] || item.SITUACIONAL || '';
+      let situacao = String(situacionalRaw).trim().toUpperCase();
 
-        // Opcional: padronizar alguns valores parecidos
-        if (situacao.includes('PUBLICADA SEM'))    situacao = 'PUBLICADA SEM CUSTOS';
-        if (situacao.includes('PUBLICADA COM'))    situacao = 'PUBLICADA COM CUSTOS';
-        if (situacao.includes('PENDENTE DE PUB'))  situacao = 'PENDENTE DE PUBLICAÇÃO';
-        if (situacao.includes('CONCLUÍDA') || situacao.includes('CONCLUIDA')) situacao = 'CONCLUÍDA';
+      // Opcional: padronizar alguns valores parecidos
+      if (situacao.includes('PUBLICADA SEM'))    situacao = 'PUBLICADA SEM CUSTOS';
+      if (situacao.includes('PUBLICADA COM'))    situacao = 'PUBLICADA COM CUSTOS';
+      if (situacao.includes('PENDENTE DE PUB'))  situacao = 'PENDENTE DE PUBLICAÇÃO';
+      if (situacao.includes('CONCLUÍDA') || situacao.includes('CONCLUIDA')) situacao = 'CONCLUÍDA';
 
-        return {
-          ...item,
-          valor: parseFloat(String(item['VALOR REPASSE'] || 0).replace(/[^\d.-]/g, '')) || 0,
-          uf: String(item.UF || item.uf || 'ND').toUpperCase().trim(),
-          situacao,   // ← agora vem correto
-          ano,
-          processo: String(item.PROCESSO || item.processo || 'ND').trim(),
-          entidade: String(item.ENTIDADE || item.entidade || 'DESCONHECIDA').trim()
-        };
-      });
+      return {
+        ...item,
+        valor: parseFloat(String(item['VALOR REPASSE'] || 0).replace(/[^\d.-]/g, '')) || 0,
+        uf: String(item.UF || item.uf || 'ND').toUpperCase().trim(),
+        situacao,   // ← agora vem correto
+        ano,
+        processo: String(item.PROCESSO || item.processo || 'ND').trim(),
+        entidade: String(item.ENTIDADE || item.entidade || 'DESCONHECIDA').trim()
+      };
+    });
 
-  setData(normalized);
+      setData(normalized);
     } catch (err) {
-      setError("Erro de conexão: O banco demorou a responder. Tente recarregar.");
+      setError(err.message || 'Falha ao carregar dados');
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
