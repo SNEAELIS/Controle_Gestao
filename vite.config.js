@@ -17,4 +17,16 @@ export default defineConfig({
   optimizeDeps: {
     include: ['jspdf', 'jspdf-autotable'],
   },
+  // --- ADICIONE O TRECHO ABAIXO ---
+  server: {
+    proxy: {
+      // Cria o túnel para o Supabase ignorar o bloqueio de rede
+      '/api/supabase-proxy': {
+        target: 'https://dompaukvvwtjuszvpssu.supabase.co',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api\/supabase-proxy/, ''),
+      },
+    },
+  },
 });
