@@ -1,11 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Usamos o caminho que definimos na regra de Rewrite do Render
-const supabaseUrl = 'https://sneaelis-bi.onrender.com/api/supabase-proxy'; 
+// Certifique-se de que não há uma barra "/" sobrando no final da URL
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL; 
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("Erro: Variáveis de ambiente não encontradas!");
-}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
