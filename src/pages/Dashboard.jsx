@@ -1,5 +1,4 @@
 // src/pages/Dashboard.jsx
-// ⚠️  Mapa 100% SVG embutido — sem d3-geo, sem fetch externo, sem GeoJSON
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -21,53 +20,16 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabaseClient';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PATHS SVG DO BRASIL — geometria simplificada, 100% embutida
-//  viewBox="0 0 500 560"
-//  Fonte: paths derivados manualmente de coordenadas geográficas reais
-// ─────────────────────────────────────────────────────────────────────────────
-// Coordenadas reais projetadas para viewBox="0 0 600 600"
-const STATES = [
-  { uf: 'AC', name: 'Acre', tx: 65, ty: 355, d: 'M46,339l21-6l42,20l17,62l-40,31l-44-3l-34-18l3-56l35-30' },
-  { uf: 'AL', name: 'Alagoas', tx: 730, ty: 380, d: 'M708,368l27,2l4,22l-29,1z' },
-  { uf: 'AM', name: 'Amazonas', tx: 180, ty: 250, d: 'M25,188l68-68l112,5l100,105l-42,50l-88,38l-42-45l-58,15l-40-52l-32,3l-28-46' },
-  { uf: 'AP', name: 'Amapá', tx: 465, ty: 105, d: 'M430,105l45-30l35,40l-30,42l-50-5' },
-  { uf: 'BA', name: 'Bahia', tx: 615, ty: 420, d: 'M510,320l85,5l115,100l-45,115l-130-15l-45-120l20-85' },
-  { uf: 'CE', name: 'Ceará', tx: 670, ty: 250, d: 'M630,255l75-25l35,50l-40,60l-70-15l0-70' },
-  { uf: 'DF', name: 'Distrito Federal', tx: 495, ty: 475, d: 'M485,465l20,0l0,20l-20,0z' },
-  { uf: 'ES', name: 'Espírito Santo', tx: 685, ty: 565, d: 'M665,535l40,25l-15,65l-25-10z' },
-  { uf: 'GO', name: 'Goiás', tx: 470, ty: 470, d: 'M430,420l110,10l45,130l-75,45l-65-80l-15-105' },
-  { uf: 'MA', name: 'Maranhão', tx: 535, ty: 250, d: 'M505,188l85,25l25,115l-85,25l-25-165' },
-  { uf: 'MG', name: 'Minas Gerais', tx: 590, ty: 560, d: 'M530,490l105,15l100,65l-45,110l-125,25l-35-215' },
-  { uf: 'MS', name: 'Mato Grosso do Sul', tx: 350, ty: 590, d: 'M305,530l115,35l35,135l-95,45l-55-215' },
-  { uf: 'MT', name: 'Mato Grosso', tx: 340, ty: 410, d: 'M295,335l115-25l100,105l-15,135l-115-35l-85-180' },
-  { uf: 'PA', name: 'Pará', tx: 435, ty: 220, d: 'M285,130l125-35l145,55l-25,165l-115-25l-130-160' },
-  { uf: 'PB', name: 'Paraíba', tx: 745, ty: 310, d: 'M715,295l45,5l-5,35l-40,5z' },
-  { uf: 'PE', name: 'Pernambuco', tx: 710, ty: 340, d: 'M640,335l115-25l5,45l-120,25z' },
-  { uf: 'PI', name: 'Piauí', tx: 600, ty: 300, d: 'M585,255l35,50l0,125l-75-15l40-160' },
-  { uf: 'PR', name: 'Paraná', tx: 410, ty: 690, d: 'M375,665l105,15l25,55l-95,35l-35-105' },
-  { uf: 'RJ', name: 'Rio de Janeiro', tx: 645, ty: 645, d: 'M625,635l55,10l-15,35l-40-5z' },
-  { uf: 'RN', name: 'Rio Grande do Norte', tx: 745, ty: 275, d: 'M710,255l45,5l10,35l-55,5z' },
-  { uf: 'RO', name: 'Rondônia', tx: 220, ty: 450, d: 'M185,405l75,25l45,115l-85,35l-35-175' },
-  { uf: 'RR', name: 'Roraima', tx: 215, ty: 95, d: 'M175,45l85,15l45,105l-85,35l-45-155' },
-  { uf: 'RS', name: 'Rio Grande do Sul', tx: 380, ty: 790, d: 'M345,745l95,15l-15,105l-80-120' },
-  { uf: 'SC', name: 'Santa Catarina', tx: 435, ty: 745, d: 'M405,725l85,15l-15,45l-70-15z' },
-  { uf: 'SE', name: 'Sergipe', tx: 720, ty: 405, d: 'M705,395l25,2l-10,25l-15-2z' },
-  { uf: 'SP', name: 'São Paulo', tx: 510, ty: 645, d: 'M485,615l115,25l25,75l-115,15l-25-115' },
-  { uf: 'TO', name: 'Tocantins', tx: 485, ty: 345, d: 'M465,295l65,15l25,135l-75,45l-15-195' }
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  UTILITÁRIOS
 // ─────────────────────────────────────────────────────────────────────────────
 const STATUS_OK  = ['REALIZADO','CONCLUÍDO','FINALIZADO','APROVADO','SIM','EXECUTADO','PUBLICADA'];
 const STATUS_BAD = ['PENDENTE','REJEITADO','CANCELADO','NÃO'];
 const PALETTE    = ['#1351B4','#0E9F6E','#F59E0B','#7E3AF2','#E02424','#0694A2','#E3A008','#6366F1','#E74694','#FF5A1F'];
 
-/** Interpola hex entre duas cores (t = 0..1) */
 function lerpColor(a, b, t) {
   const p = (hex, i) => parseInt(hex.slice(i, i + 2), 16);
-  const r = Math.round(p(a,1) + (p(b,1) - p(a,1)) * t);
-  const g = Math.round(p(a,3) + (p(b,3) - p(a,3)) * t);
+  const r  = Math.round(p(a,1) + (p(b,1) - p(a,1)) * t);
+  const g  = Math.round(p(a,3) + (p(b,3) - p(a,3)) * t);
   const bl = Math.round(p(a,5) + (p(b,5) - p(a,5)) * t);
   return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${bl.toString(16).padStart(2,'0')}`;
 }
@@ -91,14 +53,8 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 }
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:#C5D4EB;border-radius:10px}
-
-/* shell */
 .shell{display:flex;height:100vh;overflow:hidden}
-
-/* govbar */
 .govbar{height:4px;background:linear-gradient(90deg,var(--gg) 33.3%,var(--gy) 33.3%,var(--gy) 66.6%,var(--gb) 66.6%);flex-shrink:0;width:100%}
-
-/* sidebar */
 .sb{width:236px;flex-shrink:0;background:var(--gdk);display:flex;flex-direction:column;overflow:hidden;position:relative}
 .sb::after{content:'';position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(180deg,var(--gg),var(--gy) 50%,var(--gb))}
 .sb-head{padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
@@ -118,8 +74,6 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .sb-av{width:32px;height:32px;border-radius:50%;background:var(--gb);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#fff;border:2px solid rgba(255,255,255,.18);flex-shrink:0}
 .sb-un{font-size:12px;font-weight:700;color:#fff}
 .sb-ur{font-size:9.5px;color:rgba(255,255,255,.35)}
-
-/* main */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 .topbar{background:var(--bg);border-bottom:1px solid var(--bd);padding:0 20px;height:50px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.05);gap:10px}
 .tb-l{display:flex;align-items:center;gap:9px}
@@ -137,11 +91,7 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .btn:hover{background:var(--bg2)}
 .btn.p{background:var(--gb);color:#fff;border-color:var(--gb)}
 .btn.p:hover{background:var(--gbh)}
-
-/* page */
 .page{flex:1;overflow-y:auto;padding:14px 18px 24px}
-
-/* filter bar */
 .fbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:8px 12px;margin-bottom:13px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .fbar-lbl{font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t4);display:flex;align-items:center;gap:4px;margin-right:3px}
 .fsw{position:relative;display:flex;align-items:center}
@@ -153,8 +103,6 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .fchip:hover{background:var(--gbl)}
 .fclr{display:flex;align-items:center;gap:4px;padding:4px 9px;background:transparent;border:1px solid var(--bd);border-radius:6px;font-size:11px;font-weight:600;color:var(--t3);cursor:pointer;font-family:inherit;transition:background .14s;margin-left:auto}
 .fclr:hover{background:var(--bg2)}
-
-/* kpi grid */
 .kg{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:9px}
 .kpi{background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:11px 12px;cursor:pointer;position:relative;overflow:hidden;transition:box-shadow .18s,transform .18s;border-left:4px solid transparent}
 .kpi:hover{box-shadow:0 4px 16px rgba(0,0,0,.09);transform:translateY(-2px)}
@@ -172,12 +120,8 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .kpi-s.g{color:var(--ok)}.kpi-s.r{color:var(--er)}
 .kpi-hint{position:absolute;bottom:4px;right:7px;font-size:8.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t4);opacity:0;transition:opacity .14s;pointer-events:none}
 .kpi:hover .kpi-hint{opacity:1}
-
-/* section label */
 .sec{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);display:flex;align-items:center;gap:6px;margin-bottom:8px;margin-top:4px}
 .sec::after{content:'';flex:1;height:1px;background:var(--bdl)}
-
-/* chart layout */
 .crow{display:grid;gap:10px;margin-bottom:10px}
 .crow2{grid-template-columns:1fr 1fr}
 .crow-map{grid-template-columns:3fr 2fr}
@@ -186,52 +130,10 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .cc-tit{font-size:12px;font-weight:700;color:var(--t1);display:flex;align-items:center;gap:6px}
 .cc-sub{font-size:9.5px;color:var(--t3);margin-top:1px}
 .cc-bd{padding:8px 12px 10px}
-
-/* ════════════════════════
-   MAPA SVG
-════════════════════════ */
-.map-outer{
-  width:100%;
-  background:linear-gradient(160deg,#EEF4FC 0%,#E4EDF8 100%);
-  border-radius:8px;
-  overflow:hidden;
-  position:relative;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:8px;
-}
-.map-outer svg{
-  width:100%;
-  height:auto;
-  display:block;
-  filter:drop-shadow(0 2px 8px rgba(7,29,65,.12));
-}
-.map-legend{
-  position:absolute;
-  bottom:10px;
-  left:14px;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  background:rgba(255,255,255,.92);
-  backdrop-filter:blur(4px);
-  padding:5px 10px;
-  border-radius:7px;
-  font-size:10px;
-  color:var(--t2);
-  font-weight:600;
-  box-shadow:0 1px 6px rgba(0,0,0,.1);
-  border:1px solid rgba(255,255,255,.7);
-}
-.map-legend-bar{
-  width:72px;height:8px;
-  border-radius:4px;
-  background:linear-gradient(90deg,#C5D4EB,#071D41);
-  border:1px solid rgba(0,0,0,.08);
-}
-
-/* UF list */
+.map-outer{width:100%;background:linear-gradient(160deg,#EEF4FC 0%,#E4EDF8 100%);border-radius:8px;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;padding:8px}
+.map-outer svg{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 8px rgba(7,29,65,.12))}
+.map-legend{position:absolute;bottom:10px;left:14px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.92);backdrop-filter:blur(4px);padding:5px 10px;border-radius:7px;font-size:10px;color:var(--t2);font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.1);border:1px solid rgba(255,255,255,.7)}
+.map-legend-bar{width:72px;height:8px;border-radius:4px;background:linear-gradient(90deg,#C5D4EB,#071D41);border:1px solid rgba(0,0,0,.08)}
 .uf-list{max-height:300px;overflow-y:auto;padding:0 2px}
 .uf-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;cursor:pointer;transition:background .12s;margin-bottom:2px}
 .uf-row:hover{background:var(--bg2)}
@@ -243,8 +145,6 @@ html,body,#root{font-family:'IBM Plex Sans',sans-serif;background:#F0F4F8;height
 .uf-bl{font-size:9.5px;color:var(--t3)}.uf-bv{font-size:9.5px;font-weight:700;color:var(--t1)}
 .uf-bg{height:4px;background:var(--bdl);border-radius:10px;overflow:hidden}
 .uf-bf{height:100%;background:var(--gb);border-radius:10px;transition:width .5s ease}
-
-/* table */
 .tc{background:var(--bg);border:1px solid var(--bd);border-radius:9px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .tc-hd{padding:10px 13px;border-bottom:1px solid var(--bdl);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tc-tit{font-size:12px;font-weight:700;color:var(--t1);display:flex;align-items:center;gap:6px}
@@ -278,119 +178,93 @@ tbody td{padding:6px 11px;font-size:11px;color:var(--t1);white-space:nowrap}
 .pg-btn:hover:not(:disabled){background:var(--gb);color:#fff;border-color:var(--gb)}
 .pg-btn:disabled{opacity:.28;cursor:not-allowed}
 .pg-cur{font-size:10.5px;color:var(--t3);font-weight:600;padding:0 2px}
-
-/* recharts tooltip */
 .rtip{background:#fff;border:1px solid var(--bd);border-radius:7px;padding:6px 10px;box-shadow:0 4px 14px rgba(0,0,0,.09);font-size:11px;color:var(--t1)}
 .rtip b{font-weight:700;display:block;margin-bottom:2px}
-
-/* loading */
 .lscreen{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg3)}
 .spin{width:34px;height:34px;border:3px solid var(--gbl);border-top-color:var(--gb);border-radius:50%;animation:sp .65s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .lt{font-size:13.5px;font-weight:700;color:var(--t1)}.ls{font-size:11.5px;color:var(--t3)}
-
-/* fade-in */
 @keyframes fu{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 .fu{animation:fu .28s ease both}
 .d1{animation-delay:.04s}.d2{animation-delay:.09s}.d3{animation-delay:.14s}
 .d4{animation-delay:.19s}.d5{animation-delay:.24s}
+
+/* ── Legenda do gráfico de técnico ── */
+.tec-legend{display:flex;align-items:center;gap:14px;margin-top:5px;flex-wrap:wrap}
+.tec-legend-item{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#374151}
+.tec-legend-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  COMPONENTE: MAPA BRASIL (Correção de Centralização e ViewBox)
+//  MAPA DO BRASIL
 // ─────────────────────────────────────────────────────────────────────────────
 function BrazilMap({ countByUf, selectedUf, onSelect }) {
   const [geoData, setGeoData] = useState(null);
-  const [hov, setHov] = useState(null);
-
-  // GeoJSON oficial simplificado
+  const [hov, setHov]         = useState(null);
   const GEO_URL = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson";
 
   useEffect(() => {
     fetch(GEO_URL)
-      .then(res => res.json())
-      .then(data => setGeoData(data))
-      .catch(err => console.error("Erro ao carregar mapa:", err));
+      .then(r => r.json())
+      .then(d => setGeoData(d))
+      .catch(e => console.error("Erro ao carregar mapa:", e));
   }, []);
 
-  const maxVal = useMemo(() => 
-    Math.max(...Object.values(countByUf), 1), 
-  [countByUf]);
+  const maxVal = useMemo(() => Math.max(...Object.values(countByUf), 1), [countByUf]);
 
   if (!geoData) return (
-    <div className="ls" style={{textAlign:'center', padding:'40px'}}>
-      <div className="spin" style={{margin:'0 auto 10px'}} />
-      Sincronizando cartografia...
+    <div style={{ textAlign: 'center', padding: '40px' }}>
+      <div className="spin" style={{ margin: '0 auto 10px' }} />
+      <div className="ls">Sincronizando cartografia...</div>
     </div>
   );
 
   return (
     <div className="map-outer" style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
       <svg
-        /* AJUSTE DE VIEWBOX: 
-           O Brasil fica aproximadamente entre Longitude -74 a -34 e Latitude -34 a 5.
-           Como invertemos o Y (* -1), a latitude vai de 34 a -5.
-           viewBox="min-x min-y largura altura"
-        */
-        viewBox="-75 -6 42 42" 
+        viewBox="-75 -6 42 42"
         preserveAspectRatio="xMidYMid meet"
         xmlns="http://www.w3.org/2000/svg"
         className="fu"
         style={{ width: '100%', height: '100%', flex: 1 }}
       >
         {geoData.features.map((feature) => {
-          const uf = feature.properties.sigla;
+          const uf   = feature.properties.sigla;
           const name = feature.properties.name;
-          const cnt = countByUf[uf] || 0;
+          const cnt  = countByUf[uf] || 0;
           const isSel = selectedUf === uf;
           const isHov = hov === uf;
-          const t = cnt / maxVal;
+          const t     = cnt / maxVal;
+          const fill  = isSel ? 'var(--gb)' : isHov ? 'var(--gbh)'
+            : cnt > 0 ? lerpColor('#DCE6F2', '#1351B4', Math.pow(t, 0.4)) : '#F1F5F9';
 
-          const fill = isSel
-            ? 'var(--gb)' 
-            : isHov
-            ? 'var(--gbh)' 
-            : cnt > 0
-            ? lerpColor('#DCE6F2', '#1351B4', Math.pow(t, 0.4)) 
-            : '#F1F5F9';
-
-          // Processamento robusto para Polygon e MultiPolygon
           const pathData = feature.geometry.coordinates.map(polygon => {
             const rings = Array.isArray(polygon[0][0]) ? polygon : [polygon];
-            return rings.map(ring => 
-              ring.map((coord, i) => 
-                `${i === 0 ? 'M' : 'L'}${coord[0]},${coord[1] * -1}`
-              ).join(' ') + 'Z'
+            return rings.map(ring =>
+              ring.map((coord, i) => `${i === 0 ? 'M' : 'L'}${coord[0]},${coord[1] * -1}`).join(' ') + 'Z'
             ).join(' ');
           }).join(' ');
 
           return (
             <path
-              key={uf}
-              d={pathData}
-              fill={fill}
+              key={uf} d={pathData} fill={fill}
               stroke={isSel ? '#FFCD07' : '#fff'}
-              strokeWidth={isSel ? "0.25" : "0.12"} 
+              strokeWidth={isSel ? "0.25" : "0.12"}
               strokeLinejoin="round"
               onClick={() => onSelect(isSel ? null : uf)}
               onMouseEnter={() => setHov(uf)}
               onMouseLeave={() => setHov(null)}
-              style={{ 
-                cursor: 'pointer', 
-                transition: 'fill 0.2s, stroke-width 0.2s',
-                outline: 'none'
-              }}
+              style={{ cursor: 'pointer', transition: 'fill 0.2s' }}
             >
               <title>{`${name}: ${cnt} processos`}</title>
             </path>
           );
         })}
       </svg>
-
       <div className="map-legend" style={{ position: 'relative', bottom: '10px', left: '10px' }}>
-        <span style={{color: 'var(--t3)', fontSize: '10px'}}>Menos</span>
-        <div className="map-legend-bar" style={{ background: 'linear-gradient(90deg, #DCE6F2, var(--gb))', width: '80px', height: '8px', borderRadius: '4px', margin: '0 5px' }} />
-        <span style={{fontWeight: 700, fontSize: '10px'}}>{maxVal.toLocaleString('pt-BR')}</span>
+        <span style={{ color: 'var(--t3)', fontSize: '10px' }}>Menos</span>
+        <div className="map-legend-bar" style={{ background: 'linear-gradient(90deg,#DCE6F2,var(--gb))', width: '80px', height: '8px', borderRadius: '4px', margin: '0 5px' }} />
+        <span style={{ fontWeight: 700, fontSize: '10px' }}>{maxVal.toLocaleString('pt-BR')}</span>
       </div>
     </div>
   );
@@ -448,6 +322,24 @@ function KCard({ icon: Ic, lbl, val, sub, subGood, cc, ibg, icol, active, onClic
   );
 }
 
+// ── Label customizado: valor total acima de cada barra empilhada ──────────
+function TotalBarLabel({ x, y, width, value }) {
+  if (!value || value === 0) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 6}
+      textAnchor="middle"
+      fill="#111827"
+      fontSize={11}
+      fontWeight={700}
+      fontFamily="IBM Plex Mono, monospace"
+    >
+      {value.toLocaleString('pt-BR')}
+    </text>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  DASHBOARD PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -459,7 +351,6 @@ export default function DashboardSneaElis() {
   const [error, setError]     = useState(null);
   const [prog, setProg]       = useState(0);
 
-  // filtros
   const [search,   setSearch]   = useState('');
   const [fUf,      setFUf]      = useState(null);
   const [fInstr,   setFInstr]   = useState(null);
@@ -467,7 +358,7 @@ export default function DashboardSneaElis() {
   const [fTec,     setFTec]     = useState(null);
   const [fEquipe,  setFEquipe]  = useState(null);
   const [fSit,     setFSit]     = useState(null);
-  const [kpiFlt,   setKpiFlt]   = useState(null);   // { field, value }
+  const [kpiFlt,   setKpiFlt]   = useState(null);
   const [tblFlt,   setTblFlt]   = useState('');
 
   // ── carregar dados ──
@@ -496,6 +387,8 @@ export default function DashboardSneaElis() {
         _uf:     String(r.UF || r.uf || '').trim().toUpperCase() || 'N/D',
         _tec:    String(r['TÉCNICO DE FORMALIZAÇÃO'] || '').trim() || 'N/D',
         _equipe: String(r.EQUIPE || '').trim() || 'N/D',
+        // ★ NOVO: normaliza o campo TRAMITADO PARA CGAP
+        _cgap:   String(r['TRAMITADO PARA CGAP'] || '').trim().toUpperCase(),
       })));
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -530,16 +423,16 @@ export default function DashboardSneaElis() {
 
   // ── analytics ──
   const an = useMemo(() => {
-    const total = fd.length;
-    const tv    = fd.reduce((s, r) => s + r._val, 0);
-    const realiz  = fd.filter(r => STATUS_OK.some(s => r._sit?.includes(s))).length;
-    const pend    = fd.filter(r => r._sit?.includes('PENDENTE')).length;
-    const cancel  = fd.filter(r => ['CANCEL', 'REJEIT'].some(s => r._sit?.includes(s))).length;
-    const cSusp   = fd.filter(r => String(r['CELEBRADO COM CLAUSULA SUSPENSIVA'] || '').toUpperCase() === 'SIM').length;
-    const semPar  = fd.filter(r => String(r['PARECER TRANSFEREGOV'] || '').toUpperCase() === 'NÃO').length;
-    const adit    = fd.filter(r => String(r['NECESSIDADE DE ADITIVO'] || '').toUpperCase() === 'SIM').length;
-    const lim     = fd.filter(r => ['CONJUR', 'REJEITAR', 'FORMALIZAR'].some(s => String(r['SOB LIMINAR'] || '').toUpperCase().includes(s))).length;
-    const eff     = total > 0 ? (realiz / total * 100) : 0;
+    const total  = fd.length;
+    const tv     = fd.reduce((s, r) => s + r._val, 0);
+    const realiz = fd.filter(r => STATUS_OK.some(s => r._sit?.includes(s))).length;
+    const pend   = fd.filter(r => r._sit?.includes('PENDENTE')).length;
+    const cancel = fd.filter(r => ['CANCEL', 'REJEIT'].some(s => r._sit?.includes(s))).length;
+    const cSusp  = fd.filter(r => String(r['CELEBRADO COM CLAUSULA SUSPENSIVA'] || '').toUpperCase() === 'SIM').length;
+    const semPar = fd.filter(r => String(r['PARECER TRANSFEREGOV'] || '').toUpperCase() === 'NÃO').length;
+    const adit   = fd.filter(r => String(r['NECESSIDADE DE ADITIVO'] || '').toUpperCase() === 'SIM').length;
+    const lim    = fd.filter(r => ['CONJUR', 'REJEITAR', 'FORMALIZAR'].some(s => String(r['SOB LIMINAR'] || '').toUpperCase().includes(s))).length;
+    const eff    = total > 0 ? (realiz / total * 100) : 0;
 
     const agg = (key, valFn = null) => Object.entries(
       fd.reduce((a, r) => {
@@ -556,8 +449,26 @@ export default function DashboardSneaElis() {
       .map(([ano, valor]) => ({ ano, valor }))
       .sort((a, b) => a.ano.localeCompare(b.ano))
       .filter(d => d.ano !== 'N/D');
-    const byTec   = agg('_tec').map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 10);
     const bySit   = agg('_sit').map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 8);
+
+    // byTec: CONTAGEM separada por ATIVO vs CGAP
+    const byTec = (() => {
+      const map = {};
+      fd.forEach(r => {
+        const tec = r._tec;
+        if (!tec || tec === 'N/D') return;
+        if (!map[tec]) map[tec] = { name: tec, ativo: 0, cgap: 0 };
+        if (r._cgap === 'CGAP') {
+          map[tec].cgap += 1;
+        } else {
+          map[tec].ativo += 1;
+        }
+      });
+      return Object.values(map)
+        .map(d => ({ ...d, total: d.ativo + d.cgap }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10);
+    })();
 
     let growth = null;
     if (byAno.length >= 2) {
@@ -581,6 +492,15 @@ export default function DashboardSneaElis() {
     { accessorKey: '_instr',     header: 'Instrumento', cell: ({ getValue }) => <span className="badge bgr">{getValue()}</span> },
     { accessorKey: '_ano',       header: 'Ano' },
     { accessorKey: 'AJUSTE',     header: 'Ajuste',      cell: ({ getValue }) => <SBadge v={getValue()} /> },
+    {
+      accessorKey: '_cgap', header: 'CGAP',
+      cell: ({ getValue }) => {
+        const v = getValue();
+        if (v === 'CGAP') return <span className="badge ber">CGAP</span>;
+        if (!v) return <span style={{ color: '#9CA3AF' }}>—</span>;
+        return <span className="badge bgr">{v}</span>;
+      }
+    },
     { accessorKey: 'PUBLICAÇÃO NO TRANSFEREGOV', header: 'Publicação', cell: ({ getValue }) => <SBadge v={getValue()} /> },
     { accessorKey: 'TÉCNICO DE FORMALIZAÇÃO',    header: 'Técnico' },
   ], []);
@@ -624,7 +544,7 @@ export default function DashboardSneaElis() {
     XLSX.writeFile(wb, `SNEA_ELIS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // ── telas de loading / erro ──
+  // ── loading / erro ──
   if (loading) return (
     <>
       <style>{CSS}</style>
@@ -674,7 +594,7 @@ export default function DashboardSneaElis() {
               <div className="sb-av">PD</div>
               <div>
                 <div className="sb-un">Pedro Dias</div>
-                <div className="sb-ur">Analista Sênior </div>
+                <div className="sb-ur">Analista Sênior</div>
               </div>
             </div>
           </div>
@@ -710,7 +630,7 @@ export default function DashboardSneaElis() {
             <div className="fbar">
               <span className="fbar-lbl"><Filter size={10} /> Filtros</span>
               {[
-                { lbl: 'UF',          Ico: MapPin,   val: fUf,     set: setFUf,     items: opts.ufs },
+                { lbl: 'UF',          Ico: MapPin,    val: fUf,     set: setFUf,     items: opts.ufs },
                 { lbl: 'Instrumento', Ico: FileText,  val: fInstr,  set: setFInstr,  items: opts.instrs },
                 { lbl: 'Ano',         Ico: Calendar,  val: fAno,    set: setFAno,    items: opts.anos },
                 { lbl: 'Técnico',     Ico: Users,     val: fTec,    set: setFTec,    items: opts.tecs },
@@ -733,7 +653,7 @@ export default function DashboardSneaElis() {
               )}
             </div>
 
-            {/* ── KPI LINHA 1 ── */}
+            {/* KPI LINHA 1 */}
             <div className="sec fu d1"><Target size={11} /> Indicadores-Chave de Desempenho</div>
             <div className="kg fu d1">
               <KCard icon={Database} lbl="Total de Propostas"
@@ -762,7 +682,7 @@ export default function DashboardSneaElis() {
                 cc="c5" ibg="#FDE8E8" icol="#E02424" />
             </div>
 
-            {/* ── KPI LINHA 2 ── */}
+            {/* KPI LINHA 2 */}
             <div className="kg fu d2" style={{ marginBottom: 12 }}>
               <KCard icon={ShieldCheck} lbl="Cláusula Suspensiva"
                 val={an.cSusp.toLocaleString('pt-BR')} sub="Celebrados c/ cláusula"
@@ -791,11 +711,9 @@ export default function DashboardSneaElis() {
                 cc="c10" ibg="#FCE8F3" icol="#E74694" />
             </div>
 
-            {/* ── MAPA + RANKING ── */}
+            {/* MAPA + RANKING */}
             <div className="sec fu d3"><Globe size={11} /> Distribuição Geográfica</div>
             <div className="crow crow-map fu d3">
-
-              {/* Mapa */}
               <div className="cc">
                 <div className="cc-hd">
                   <div>
@@ -808,8 +726,6 @@ export default function DashboardSneaElis() {
                   <BrazilMap countByUf={an.cbu} selectedUf={fUf} onSelect={setFUf} />
                 </div>
               </div>
-
-              {/* Ranking UF */}
               <div className="cc">
                 <div className="cc-hd">
                   <div>
@@ -839,7 +755,7 @@ export default function DashboardSneaElis() {
               </div>
             </div>
 
-            {/* ── GRÁFICOS LINHA 1 ── */}
+            {/* GRÁFICOS LINHA 1 */}
             <div className="crow crow2 fu d4">
               {/* Pizza instrumento */}
               <div className="cc">
@@ -912,38 +828,165 @@ export default function DashboardSneaElis() {
               </div>
             </div>
 
-            {/* ── GRÁFICOS LINHA 2 ── */}
-            <div className="crow crow2 fu d5" style={{ marginBottom: 12 }}>
-              {/* Barra técnico */}
-              <div className="cc">
+            {/* ══════════════════════════════════════════════════════════════
+                GRÁFICOS LINHA 2
+                ★ TÉCNICO — BARRAS PARALELAS AZUL / VERMELHO ★
+            ══════════════════════════════════════════════════════════════ */}
+            <div className="crow fu d5" style={{ marginBottom: 12, gridTemplateColumns: '3fr 2fr' }}>
+
+              {/* ─── TÉCNICO DE FORMALIZAÇÃO — CONTAGEM barras PARALELAS ─── */}
+              <div className="cc" style={{ cursor: 'default' }}>
                 <div className="cc-hd">
                   <div>
-                    <div className="cc-tit"><Users size={13} style={{ color: '#0694A2' }} /> Por Técnico de Formalização</div>
-                    <div className="cc-sub">Clique na barra para filtrar</div>
+                    <div className="cc-tit">
+                      <Users size={13} style={{ color: '#0694A2' }} />
+                      Processos por Técnico de Formalização
+                    </div>
+                    <div className="tec-legend">
+                      <span className="tec-legend-item">
+                        <span className="tec-legend-dot" style={{ background: '#1A56DB' }} />
+                        Em carga do técnico
+                      </span>
+                      <span className="tec-legend-item">
+                        <span className="tec-legend-dot" style={{ background: '#E02424' }} />
+                        Tramitado para CGAP
+                      </span>
+                      <span style={{ fontSize: 9.5, color: '#9CA3AF', marginLeft: 4 }}>· clique para filtrar</span>
+                    </div>
                   </div>
                   {fTec && <div className="fchip" onClick={() => setFTec(null)}>{fTec} <X size={9} /></div>}
                 </div>
                 <div className="cc-bd">
-                  <div style={{ height: 230 }}>
+                  <div style={{ height: 360 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={an.byTec} margin={{ top: 5, right: 10, left: 0, bottom: 36 }}
+                      <BarChart
+                        data={an.byTec}
+                        margin={{ top: 28, right: 10, left: 0, bottom: 20 }}
+                        barCategoryGap="18%"
+                        barGap={3}
                         onClick={({ activePayload }) => {
-                          if (activePayload?.[0]) setFTec(fTec === activePayload[0].payload.name ? null : activePayload[0].payload.name);
-                        }}>
+                          if (activePayload?.[0]) {
+                            const name = activePayload[0].payload.name;
+                            setFTec(fTec === name ? null : name);
+                          }
+                        }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 8.5 }} angle={-32} textAnchor="end" stroke="#E2E8F0" interval={0} />
-                        <YAxis tick={{ fontSize: 9 }} stroke="#E2E8F0" />
-                        <RTooltip content={<CTip />} />
-                        <Bar dataKey="qty" name="Propostas" radius={[4, 4, 0, 0]} cursor="pointer">
-                          {an.byTec.map((d, i) => <Cell key={i} fill={fTec === d.name ? '#071D41' : '#1A56DB'} />)}
+
+                        <XAxis
+                          dataKey="name"
+                          axisLine={{ stroke: '#E2E8F0' }}
+                          tickLine={false}
+                          tick={({ x, y, payload }) => {
+                            const firstName = payload.value.split(' ')[0];
+                            const isSel = fTec === payload.value;
+                            return (
+                              <text
+                                x={x} y={y + 14}
+                                textAnchor="middle"
+                                fill={isSel ? '#1351B4' : '#374151'}
+                                fontSize={11}
+                                fontWeight={isSel ? 800 : 600}
+                                fontFamily="IBM Plex Sans, sans-serif"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => setFTec(fTec === payload.value ? null : payload.value)}
+                              >
+                                {firstName}
+                              </text>
+                            );
+                          }}
+                        />
+
+                        <YAxis hide />
+
+                        <RTooltip
+                          cursor={{ fill: 'rgba(19,81,180,0.05)' }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload;
+                            return (
+                              <div className="rtip" style={{ minWidth: 180 }}>
+                                <b style={{ fontSize: 12, marginBottom: 6, display: 'block' }}>{d.name}</b>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#374151' }}>
+                                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1A56DB', display: 'inline-block' }} />
+                                      Em carga
+                                    </span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1A56DB' }}>{d.ativo} processos</span>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#374151' }}>
+                                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#E02424', display: 'inline-block' }} />
+                                      CGAP
+                                    </span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#E02424' }}>{d.cgap} processos</span>
+                                  </div>
+                                  <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>Total</span>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{d.total}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }}
+                        />
+
+                        {/* BARRA AZUL — em carga */}
+                        <Bar
+                          dataKey="ativo"
+                          name="Em carga"
+                          radius={[4, 4, 0, 0]}
+                          cursor="pointer"
+                          label={{
+                            position: 'top',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            fill: '#1A56DB',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            formatter: v => v > 0 ? v : '',
+                          }}
+                        >
+                          {an.byTec.map((d, i) => (
+                            <Cell
+                              key={i}
+                              fill={fTec === d.name ? '#0C326F' : '#1A56DB'}
+                              opacity={fTec && fTec !== d.name ? 0.28 : 1}
+                            />
+                          ))}
                         </Bar>
+
+                        {/* BARRA VERMELHA — CGAP */}
+                        <Bar
+                          dataKey="cgap"
+                          name="CGAP"
+                          radius={[4, 4, 0, 0]}
+                          cursor="pointer"
+                          label={{
+                            position: 'top',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            fill: '#E02424',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            formatter: v => v > 0 ? v : '',
+                          }}
+                        >
+                          {an.byTec.map((d, i) => (
+                            <Cell
+                              key={i}
+                              fill={fTec === d.name ? '#9B1C1C' : '#E02424'}
+                              opacity={fTec && fTec !== d.name ? 0.28 : 1}
+                            />
+                          ))}
+                        </Bar>
+
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
               </div>
 
-              {/* Barra horizontal situação */}
+              {/* ─── SITUAÇÃO (Ajuste) — sem alterações ─── */}
               <div className="cc">
                 <div className="cc-hd">
                   <div>
@@ -953,9 +996,9 @@ export default function DashboardSneaElis() {
                   {fSit && <div className="fchip" onClick={() => setFSit(null)}>{fSit} <X size={9} /></div>}
                 </div>
                 <div className="cc-bd">
-                  <div style={{ height: 230 }}>
+                  <div style={{ height: 320 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={an.bySit} layout="vertical" margin={{ top: 5, right: 20, left: 88, bottom: 5 }}
+                      <BarChart data={an.bySit} layout="vertical" margin={{ top: 5, right: 44, left: 88, bottom: 5 }}
                         onClick={({ activePayload }) => {
                           if (activePayload?.[0]) setFSit(fSit === activePayload[0].payload.name ? null : activePayload[0].payload.name);
                         }}>
@@ -963,7 +1006,17 @@ export default function DashboardSneaElis() {
                         <XAxis type="number" tick={{ fontSize: 9 }} stroke="#E2E8F0" />
                         <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} stroke="#E2E8F0" width={86} />
                         <RTooltip content={<CTip />} />
-                        <Bar dataKey="qty" name="Qtd." radius={[0, 4, 4, 0]} cursor="pointer">
+                        <Bar
+                          dataKey="qty" name="Qtd." radius={[0, 4, 4, 0]} cursor="pointer"
+                          label={{
+                            position: 'right',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            fill: '#374151',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            formatter: v => v.toLocaleString('pt-BR'),
+                          }}
+                        >
                           {an.bySit.map((d, i) => {
                             let fill = '#1A56DB';
                             if (STATUS_OK.some(s => d.name?.includes(s))) fill = '#0E9F6E';
@@ -979,7 +1032,7 @@ export default function DashboardSneaElis() {
               </div>
             </div>
 
-            {/* ── TABELA ── */}
+            {/* TABELA */}
             <div className="sec fu"><List size={11} /> Registros Detalhados</div>
             <div className="tc fu">
               <div className="tc-hd">

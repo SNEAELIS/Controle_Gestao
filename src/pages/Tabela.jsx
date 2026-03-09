@@ -279,6 +279,7 @@ function Badge({ value }) {
 export default function TabelaGerencialMaster() {
   const navigate = useNavigate();
 
+
   const [data, setData]             = useState([]);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
@@ -683,6 +684,9 @@ export default function TabelaGerencialMaster() {
           {/* Toolbar */}
           <div className="tbar">
             <div className="tbar-l">
+            <button className="ibtn" onClick={() => navigate('/')} title="Voltar">
+              <ChevronLeft size={14} />
+            </button>
               <span className="tbar-title">Propostas</span>
               <span className="tbar-cnt">{totalFiltered.toLocaleString('pt-BR')} registros</span>
             </div>
