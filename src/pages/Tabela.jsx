@@ -11,16 +11,11 @@ import {
   Download, Save, CheckCircle2, AlertCircle, Loader2,
   ChevronLeft, ChevronRight, Search, Plus, Trash2,
   AlertTriangle, RefreshCw, Filter, X, Bot, FileSpreadsheet,
-  Hash, Upload,
+  Hash, Upload, Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabaseClient';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONFIGURAÇÕES
-// INSTRUMENTO → somente leitura (preenchido pelo robô)
-// NECESSIDADE DE ADITIVO PARA SUSPENSIVA → editável (SIM/NÃO/NÃO SE APLICA)
-// ─────────────────────────────────────────────────────────────────────────────
 const SELECT_OPTIONS = {
   'CELEBRADO COM CLAUSULA SUSPENSIVA':      ['SIM', 'NÃO', 'NÃO SE APLICA'],
   'NECESSIDADE DE ADITIVO PARA SUSPENSIVA': ['SIM', 'NÃO', 'NÃO SE APLICA'],
@@ -36,12 +31,19 @@ const SELECT_OPTIONS = {
   'TÉCNICO DE FORMALIZAÇÃO':                ['THALITA', 'SAMARA', 'GLENDA', 'HELLEN', 'ALINE', 'SUELHY', 'JAQUELINE', 'CLARISSA', 'JÚLIO'],
 };
 
-// Colunas preenchidas automaticamente pelo robô (somente leitura)
 const ROBO_COLS = ['INSTRUMENTO', 'PUBLICAÇÃO NO TRANSFEREGOV', 'PROPONENTE', 'NÚMERO DO PROCESSO', 'DATA INÍCIO DE VIGÊNCIA'];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ESTILOS
-// ─────────────────────────────────────────────────────────────────────────────
+// Formata data para pt-BR
+const fmtDate = iso => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return '—'; }
+};
+
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=DM+Mono:wght@400;500&display=swap');
 
@@ -54,6 +56,7 @@ const STYLES = `
     --amber:      #D97706; --amber-lt: #FFFBEB;
     --red:        #DC2626; --red-lt:   #FEF2F2;
     --sky:        #0369A1; --sky-lt:   #F0F9FF; --sky-bd:  #BAE6FD;
+    --purple:     #7C3AED; --purple-lt: #F5F3FF; --purple-bd: #DDD6FE;
     --slate:      #64748B;
     --border:     #E2E8F0; --border2: #CBD5E1;
     --text:       #0F172A; --text2: #475569; --text3: #94A3B8;
@@ -63,29 +66,24 @@ const STYLES = `
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
 
-  /* shell */
   .shell { display: flex; height: 100vh; overflow: hidden; }
 
   /* ─── SIDEBAR ─── */
   .sidebar { width: 252px; flex-shrink:0; background:var(--bg); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-
   .sb-head { padding:16px 16px 13px; border-bottom:1px solid var(--border); }
   .sb-brand { display:flex; align-items:center; gap:10px; }
   .sb-icon { width:34px;height:34px;border-radius:9px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0; }
   .sb-name { font-size:14px;font-weight:800;color:var(--text);letter-spacing:-.02em; }
   .sb-name em { color:var(--blue);font-style:normal; }
   .sb-sub  { font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-top:2px; }
-
   .sb-body { flex:1;overflow-y:auto;padding:13px 13px 0; }
   .sb-sec  { font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);display:flex;align-items:center;gap:5px;margin-bottom:10px; }
-
   .fld { margin-bottom:9px; }
   .fld-l { display:block;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:4px;padding-left:2px; }
   .fld-i, .fld-s { width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;background:var(--bg2);outline:none;transition:border-color .14s,box-shadow .14s;appearance:none; }
   .fld-i:focus,.fld-s:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff; }
   .sel-w { position:relative; }
   .sel-w::after { content:'';position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--text3);pointer-events:none; }
-
   .sb-foot { padding:11px 13px 13px;border-top:1px solid var(--border);flex-shrink:0; }
   .btn-clear { width:100%;padding:9px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s; }
   .btn-clear:hover { background:var(--bg2); }
@@ -148,10 +146,12 @@ const STYLES = `
   thead th.s:hover { background:#EFF6FF;color:var(--blue); }
   thead th.robo { color:var(--sky);background:var(--sky-lt); }
   thead th.robo:hover { background:#E0F2FE; }
+  thead th.audit { color:var(--purple);background:var(--purple-lt); }
+  thead th.audit:hover { background:#EDE9FE; }
   .th-in { display:flex;align-items:center;gap:4px; }
   .si { font-size:9px;opacity:.35; }
 
-  tbody tr { transition:background .08s; }
+  tbody tr { transition:background .08s;position:relative; }
   tbody tr:hover { background:#F8FAFC; }
   tbody tr + tr { border-top:1px solid #F1F5F9; }
   tbody tr.sel { background:#EFF6FF !important; }
@@ -160,6 +160,8 @@ const STYLES = `
   .td-p { font-weight:700;color:var(--blue);font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap; }
   .td-v { font-weight:700;color:var(--text);font-size:11px;white-space:nowrap;font-family:'DM Mono',monospace; }
   .td-robo { color:var(--sky);font-size:11px;background:var(--sky-lt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:block; }
+  .td-audit-date { font-size:11px;color:var(--purple);font-family:'DM Mono',monospace;white-space:nowrap; }
+  .td-audit-col { display:inline-flex;align-items:center;font-size:10px;font-weight:700;background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple-bd);border-radius:20px;padding:2px 8px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis; }
 
   .badge { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.02em; }
   .badge::before { content:'';width:5px;height:5px;border-radius:50%;flex-shrink:0; }
@@ -180,6 +182,22 @@ const STYLES = `
   .cb { width:14px;height:14px;cursor:pointer;accent-color:var(--blue); }
 
   .robo-tag { display:inline-flex;align-items:center;gap:2px;font-size:8px;font-weight:700;text-transform:uppercase;background:var(--sky-lt);color:var(--sky);border:1px solid var(--sky-bd);border-radius:4px;padding:1px 5px;margin-left:4px; }
+  .audit-tag { display:inline-flex;align-items:center;gap:2px;font-size:8px;font-weight:700;text-transform:uppercase;background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple-bd);border-radius:4px;padding:1px 5px;margin-left:4px; }
+
+  /* ── TOOLTIP ── */
+  .tt-wrap { position:relative;display:inline-flex;align-items:center; }
+  .tt-wrap .tt {
+    display:none;position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);
+    background:#0F172A;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:500;
+    white-space:nowrap;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none;
+    line-height:1.5;min-width:180px;text-align:left;
+  }
+  .tt-wrap .tt::after {
+    content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:#0F172A;
+  }
+  .tt-wrap:hover .tt { display:block; }
+  .tt strong { color:#93C5FD;font-weight:700; }
 
   /* Footer */
   .tfoot { padding:10px 15px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#FAFBFC; }
@@ -199,14 +217,12 @@ const STYLES = `
   @keyframes popIn { from{opacity:0;transform:scale(.95) translateY(8px)} }
   .modal-sm { max-width:420px; }
   .modal-lg { max-width:600px; }
-
   .m-ico { width:52px;height:52px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px; }
   .m-ico.red   { background:var(--red-lt);color:var(--red); }
   .m-ico.blue  { background:var(--blue-lt);color:var(--blue); }
   .modal h2 { font-size:17px;font-weight:800;text-align:center;color:var(--text);margin-bottom:6px;letter-spacing:-.02em; }
   .m-desc { font-size:13px;color:var(--text2);text-align:center;line-height:1.6;margin-bottom:20px; }
   .m-desc b { color:var(--text);font-weight:700; }
-
   .m-acts { display:flex;gap:8px; }
   .m-acts button { flex:1;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .12s; }
   .act-cancel { background:#F1F5F9;border:1px solid var(--border);color:var(--text2); }
@@ -216,52 +232,37 @@ const STYLES = `
   .act-ok { background:var(--blue);border:none;color:#fff; }
   .act-ok:hover { background:var(--blue-h); }
   .act-ok:disabled { opacity:.4;cursor:not-allowed; }
-
-  /* Modal form */
   .mfld { margin-bottom:13px; }
   .mfld-l { display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:5px; }
   .mfld-i { width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;background:var(--bg2);outline:none;transition:border-color .14s,box-shadow .14s; }
   .mfld-i:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff; }
   .mfld-i::placeholder { color:var(--text3); }
-
-  /* Notices */
   .notice { border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5;margin-bottom:14px; }
   .notice svg { flex-shrink:0;margin-top:1px; }
   .notice.sky   { background:var(--sky-lt);border:1px solid var(--sky-bd);color:var(--sky); }
   .notice.green { background:var(--green-lt);border:1px solid #A7F3D0;color:#065F46; }
-
-  /* Tabs */
   .tabs { display:flex;background:#F1F5F9;border-radius:9px;padding:3px;margin-bottom:16px; }
   .tab { flex:1;padding:8px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s,color .14s;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:6px; }
   .tab.on { background:#fff;color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1); }
-
-  /* Dropzone */
   .dz { border:2px dashed var(--border2);border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:border-color .14s,background .14s;margin-bottom:12px;background:var(--bg2); }
   .dz:hover,.dz.over { border-color:var(--blue);background:var(--blue-lt); }
   .dz-ic { color:var(--text3);margin:0 auto 8px;display:block; }
   .dz-t { font-size:13px;font-weight:600;color:var(--text2); }
   .dz-s { font-size:11px;color:var(--text3);margin-top:2px; }
-
-  /* Preview */
   .prev-wrap { max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px; }
   .prev-t { width:100%;border-collapse:collapse;font-size:11px; }
   .prev-t th { background:#F8FAFC;padding:6px 10px;text-align:left;font-weight:700;color:var(--text2);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase; }
   .prev-t td { padding:5px 10px;color:var(--text);border-bottom:1px solid #F1F5F9; }
-
-  /* Toast */
   .toast { position:fixed;top:15px;left:50%;transform:translateX(-50%);z-index:999;padding:10px 18px;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.02em;box-shadow:0 8px 28px rgba(0,0,0,.14);animation:slideD .25s ease;white-space:nowrap; }
   .toast.success { background:#0F172A;color:#fff; }
   .toast.error   { background:var(--red);color:#fff; }
   @keyframes slideD { from{opacity:0;transform:translateX(-50%) translateY(-10px)} }
-
-  /* Loading */
   .load-scr { height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;background:#ECEEF2; }
   .spin { width:30px;height:30px;border:3px solid #E2E8F0;border-top-color:var(--blue);border-radius:50%;animation:rot .65s linear infinite; }
   @keyframes rot { to{transform:rotate(360deg)} }
   .load-t { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--text3); }
 `;
 
-// ─── Badge ───
 function Badge({ value }) {
   if (!value) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
   const v = String(value).toUpperCase();
@@ -273,29 +274,41 @@ function Badge({ value }) {
   return <span className={`badge ${c}`}>{value}</span>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPAL
-// ─────────────────────────────────────────────────────────────────────────────
+// Tooltip de auditoria exibido ao passar o mouse na célula de data
+function AuditTooltip({ date, col, children }) {
+  return (
+    <div className="tt-wrap">
+      {children}
+      <div className="tt">
+        <div style={{ marginBottom: 4 }}>
+          <strong>Última atualização</strong>
+        </div>
+        <div>📅 {date || '—'}</div>
+        {col && <div style={{ marginTop: 4 }}>✏️ Coluna: <strong>{col}</strong></div>}
+      </div>
+    </div>
+  );
+}
+
 export default function TabelaGerencialMaster() {
   const navigate = useNavigate();
 
-
-  const [data, setData]             = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [progress, setProgress]     = useState(0);
-  const [message, setMessage]       = useState(null);
+  const [data, setData]               = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [saving, setSaving]           = useState(false);
+  const [progress, setProgress]       = useState(0);
+  const [message, setMessage]         = useState(null);
   const [editedCells, setEditedCells] = useState({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [selectedRows, setSelectedRows] = useState(new Set());
 
-  const [delModal, setDelModal]   = useState({ open: false, single: null });
-  const [newModal, setNewModal]   = useState(false);
-  const [newTab, setNewTab]       = useState('manual');
+  const [delModal, setDelModal]     = useState({ open: false, single: null });
+  const [newModal, setNewModal]     = useState(false);
+  const [newTab, setNewTab]         = useState('manual');
   const [newProposta, setNewProposta] = useState('');
-  const [excelFile, setExcelFile] = useState(null);
+  const [excelFile, setExcelFile]   = useState(null);
   const [excelError, setExcelError] = useState('');
-  const [dragover, setDragover]   = useState(false);
+  const [dragover, setDragover]     = useState(false);
   const fileRef = useRef(null);
 
   const [filters, setFilters] = useState({
@@ -334,18 +347,18 @@ export default function TabelaGerencialMaster() {
   // ── filtros ──
   const filteredData = useMemo(() => data.filter(row => {
     const f = filters;
-    if (f.proposta    && !String(row['PROPOSTA'] || '').toLowerCase().includes(f.proposta.toLowerCase())) return false;
-    if (f.modalidade  !== 'Todas' && row['INSTRUMENTO'] !== f.modalidade) return false;
-    if (f.situacao    !== 'Todas' && row['AJUSTE'] !== f.situacao) return false;
-    if (f.empenhado   !== 'Todos') {
+    if (f.proposta   && !String(row['PROPOSTA'] || '').toLowerCase().includes(f.proposta.toLowerCase())) return false;
+    if (f.modalidade !== 'Todas' && row['INSTRUMENTO'] !== f.modalidade) return false;
+    if (f.situacao   !== 'Todas' && row['AJUSTE'] !== f.situacao) return false;
+    if (f.empenhado  !== 'Todos') {
       const e = String(row['CANCELAR EMPENHO'] || '').toLowerCase();
       if (f.empenhado === 'Sim' && e !== 'sim') return false;
       if (f.empenhado === 'Não' && e !== 'não') return false;
     }
-    if (f.publicacao  !== 'Todas' && row['PUBLICAÇÃO NO TRANSFEREGOV'] !== f.publicacao) return false;
-    if (f.processo    && !String(row['NÚMERO DO PROCESSO'] || '').toLowerCase().includes(f.processo.toLowerCase())) return false;
-    if (f.proponente  && !String(row['PROPONENTE'] || '').toLowerCase().includes(f.proponente.toLowerCase())) return false;
-    if (f.tecnico     !== 'Todos' && row['TÉCNICO DE FORMALIZAÇÃO'] !== f.tecnico) return false;
+    if (f.publicacao !== 'Todas' && row['PUBLICAÇÃO NO TRANSFEREGOV'] !== f.publicacao) return false;
+    if (f.processo   && !String(row['NÚMERO DO PROCESSO'] || '').toLowerCase().includes(f.processo.toLowerCase())) return false;
+    if (f.proponente && !String(row['PROPONENTE'] || '').toLowerCase().includes(f.proponente.toLowerCase())) return false;
+    if (f.tecnico    !== 'Todos' && row['TÉCNICO DE FORMALIZAÇÃO'] !== f.tecnico) return false;
     if (globalFilter) {
       const gf = globalFilter.toLowerCase();
       return Object.values(row).some(v => String(v || '').toLowerCase().includes(gf));
@@ -363,22 +376,26 @@ export default function TabelaGerencialMaster() {
 
   // ── colunas ──
   const columns = useMemo(() => {
-    const hidden = ['id','created_at','vazia_1','vazia_2','SITUACIONAL','Coluna1'];
+    // Oculta colunas de sistema e as de auditoria (vão aparecer num lugar específico)
+    const hidden = ['id','created_at','vazia_1','vazia_2','SITUACIONAL','Coluna1','updated_at','ultima_coluna_editada'];
     const fixed  = ['PROPOSTA','VALOR REPASSE'];
     const dyn    = data.length > 0
       ? Object.keys(data[0]).filter(k => !hidden.includes(k) && !fixed.includes(k))
       : [];
 
     return [
+      // ── checkbox ──
       {
-        id: 'sel', header: () => (
+        id: 'sel',
+        header: () => (
           <input type="checkbox" className="cb"
             checked={selectedRows.size === filteredData.length && filteredData.length > 0}
             onChange={e => {
               if (e.target.checked) setSelectedRows(new Set(filteredData.map(r => r.id)));
               else setSelectedRows(new Set());
             }} />
-        ), size: 36,
+        ),
+        size: 36,
         cell: ({ row }) => (
           <input type="checkbox" className="cb"
             checked={selectedRows.has(row.original.id)}
@@ -389,6 +406,7 @@ export default function TabelaGerencialMaster() {
             }} />
         ),
       },
+      // ── delete ──
       {
         id: 'del', header: '', size: 36,
         cell: ({ row }) => (
@@ -398,10 +416,12 @@ export default function TabelaGerencialMaster() {
           </button>
         ),
       },
+      // ── proposta ──
       {
         accessorKey: 'PROPOSTA', header: 'Nº PROPOSTA', size: 130,
         cell: ({ getValue }) => <span className="td-p">{getValue()}</span>,
       },
+      // ── valor ──
       {
         accessorKey: 'VALOR REPASSE', header: 'VALOR REPASSE', size: 140,
         cell: ({ getValue }) => {
@@ -409,6 +429,38 @@ export default function TabelaGerencialMaster() {
           return <span className="td-v">{v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>;
         },
       },
+      // ── COLUNA DE AUDITORIA — última atualização ──
+      {
+        id: 'auditoria',
+        header: () => (
+          <div className="th-in">
+            <Clock size={10} /> ÚLTIMA ATUALIZAÇÃO
+            <span className="audit-tag">audit</span>
+          </div>
+        ),
+        size: 220,
+        cell: ({ row }) => {
+          const updatedAt = row.original.updated_at;
+          const colEditada = row.original.ultima_coluna_editada;
+          const dateStr = fmtDate(updatedAt);
+
+          if (!updatedAt) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
+
+          return (
+            <AuditTooltip date={dateStr} col={colEditada}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span className="td-audit-date">📅 {dateStr}</span>
+                {colEditada && (
+                  <span className="td-audit-col" title={colEditada}>
+                    ✏️ {colEditada}
+                  </span>
+                )}
+              </div>
+            </AuditTooltip>
+          );
+        },
+      },
+      // ── colunas dinâmicas ──
       ...dyn.map(key => {
         const isRobo = ROBO_COLS.includes(key);
         return {
@@ -454,15 +506,17 @@ export default function TabelaGerencialMaster() {
   const totalFiltered = filteredData.length;
   const pageCount = table.getPageCount();
 
-  // ── salvar ──
+  // ── salvar — grava também qual coluna foi editada ──
   const handleSave = async () => {
     setSaving(true);
     try {
       const upd = {};
       for (const [cellId, value] of Object.entries(editedCells)) {
         const [id, key] = cellId.split('::');
-        if (!upd[id]) upd[id] = { id: parseInt(id) };
+        if (!upd[id]) upd[id] = { id };
         upd[id][key] = value;
+        // Sobrescreve com a última coluna editada deste registro
+        upd[id]['ultima_coluna_editada'] = key;
       }
       for (const u of Object.values(upd)) {
         const { id, ...fields } = u;
@@ -482,7 +536,6 @@ export default function TabelaGerencialMaster() {
     XLSX.writeFile(wb, 'Relatorio_MESP.xlsx');
   };
 
-  // ── excluir único ──
   const handleDeleteSingle = async () => {
     const row = delModal.single;
     await supabase.from('formalizacoes').delete().eq('id', row.id);
@@ -492,7 +545,6 @@ export default function TabelaGerencialMaster() {
     fetchAllData();
   };
 
-  // ── excluir selecionados ──
   const handleDeleteSelected = async () => {
     const ids = Array.from(selectedRows);
     await supabase.from('formalizacoes').delete().in('id', ids);
@@ -502,7 +554,6 @@ export default function TabelaGerencialMaster() {
     fetchAllData();
   };
 
-  // ── novo manual ──
   const handleNewManual = async () => {
     const p = newProposta.trim();
     if (!p) return;
@@ -512,7 +563,6 @@ export default function TabelaGerencialMaster() {
     setNewModal(false); setNewProposta(''); fetchAllData();
   };
 
-  // ── processar excel ──
   const processExcel = file => {
     setExcelError(''); setExcelFile(null);
     const reader = new FileReader();
@@ -538,7 +588,6 @@ export default function TabelaGerencialMaster() {
     setNewModal(false); setExcelFile(null); fetchAllData();
   };
 
-  // ── loading ──
   if (loading && !data.length) return (
     <><style>{STYLES}</style>
       <div className="load-scr">
@@ -548,10 +597,8 @@ export default function TabelaGerencialMaster() {
     </>
   );
 
-  // ──────────────────────────────────────────────────────────────────────────
   return (
     <><style>{STYLES}</style>
-
     <div className="shell">
 
       {/* SIDEBAR */}
@@ -570,9 +617,9 @@ export default function TabelaGerencialMaster() {
           <div className="sb-sec"><Filter size={10} /> Filtros</div>
 
           {[
-            { lbl: 'Nº Proposta', key: 'proposta', type: 'input', placeholder: 'Ex.: 024721/2025' },
-            { lbl: 'Nº do Processo', key: 'processo', type: 'input', placeholder: 'Digite o processo' },
-            { lbl: 'Proponente', key: 'proponente', type: 'input', placeholder: 'Digite o proponente' },
+            { lbl: 'Nº Proposta',    key: 'proposta',   placeholder: 'Ex.: 024721/2025' },
+            { lbl: 'Nº do Processo', key: 'processo',   placeholder: 'Digite o processo' },
+            { lbl: 'Proponente',     key: 'proponente', placeholder: 'Digite o proponente' },
           ].map(({ lbl, key, placeholder }) => (
             <div className="fld" key={key}>
               <label className="fld-l">{lbl}</label>
@@ -684,9 +731,9 @@ export default function TabelaGerencialMaster() {
           {/* Toolbar */}
           <div className="tbar">
             <div className="tbar-l">
-            <button className="ibtn" onClick={() => navigate('/')} title="Voltar">
-              <ChevronLeft size={14} />
-            </button>
+              <button className="ibtn" onClick={() => navigate('/')} title="Voltar">
+                <ChevronLeft size={14} />
+              </button>
               <span className="tbar-title">Propostas</span>
               <span className="tbar-cnt">{totalFiltered.toLocaleString('pt-BR')} registros</span>
             </div>
@@ -736,10 +783,15 @@ export default function TabelaGerencialMaster() {
                 <tr>
                   {table.getHeaderGroups()[0]?.headers.map(header => {
                     const key = header.column.columnDef.accessorKey;
-                    const isRobo = ROBO_COLS.includes(key);
+                    const isRobo  = ROBO_COLS.includes(key);
+                    const isAudit = header.column.id === 'auditoria';
                     return (
                       <th key={header.id}
-                        className={`${header.column.getCanSort() ? 's' : ''}${isRobo ? ' robo' : ''}`}
+                        className={[
+                          header.column.getCanSort() ? 's' : '',
+                          isRobo  ? 'robo'  : '',
+                          isAudit ? 'audit' : '',
+                        ].join(' ').trim()}
                         style={{ width: header.column.columnDef.size }}
                         onClick={header.column.getToggleSortingHandler()}>
                         <div className="th-in">
@@ -800,7 +852,7 @@ export default function TabelaGerencialMaster() {
       </main>
     </div>
 
-    {/* ── MODAL EXCLUIR ÚNICO ── */}
+    {/* MODAL — excluir único */}
     {delModal.open && delModal.single && (
       <div className="overlay">
         <div className="modal modal-sm">
@@ -818,7 +870,7 @@ export default function TabelaGerencialMaster() {
       </div>
     )}
 
-    {/* ── MODAL EXCLUIR SELECIONADOS ── */}
+    {/* MODAL — excluir selecionados */}
     {delModal.open && !delModal.single && (
       <div className="overlay">
         <div className="modal modal-sm">
@@ -836,7 +888,7 @@ export default function TabelaGerencialMaster() {
       </div>
     )}
 
-    {/* ── MODAL NOVO REGISTRO ── */}
+    {/* MODAL — novo registro */}
     {newModal && (
       <div className="overlay">
         <div className="modal modal-lg">
@@ -855,7 +907,6 @@ export default function TabelaGerencialMaster() {
             </button>
           </div>
 
-          {/* MANUAL */}
           {newTab === 'manual' && <>
             <div className="notice sky">
               <Bot size={15} />
@@ -879,7 +930,6 @@ export default function TabelaGerencialMaster() {
             </div>
           </>}
 
-          {/* EXCEL */}
           {newTab === 'excel' && <>
             <div className="notice green">
               <FileSpreadsheet size={15} />
