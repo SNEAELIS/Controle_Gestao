@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,11 +10,14 @@ import {
   Download, Save, CheckCircle2, AlertCircle, Loader2,
   ChevronLeft, ChevronRight, Search, Plus, Trash2,
   AlertTriangle, RefreshCw, Filter, X, Bot, FileSpreadsheet,
-  Hash, Upload, Clock,
+  Hash, Upload, Clock, ChevronUp, ChevronDown,
+  Edit3, Check, XCircle, Info, BarChart2, TrendingUp,
+  Calendar, AlertOctagon, Columns, Eye, EyeOff,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabaseClient';
 
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const SELECT_OPTIONS = {
   'CELEBRADO COM CLAUSULA SUSPENSIVA':      ['SIM', 'NÃO', 'NÃO SE APLICA'],
   'NECESSIDADE DE ADITIVO PARA SUSPENSIVA': ['SIM', 'NÃO', 'NÃO SE APLICA'],
@@ -29,270 +31,111 @@ const SELECT_OPTIONS = {
   'INSTRUÇÃO PROCESSUAL':                   ['SIM', 'NÃO', 'PENDENTE'],
   'EQUIPE':                                 ['EQUIPE 6', 'EQUIPE 7'],
   'TÉCNICO DE FORMALIZAÇÃO':                ['THALITA', 'SAMARA', 'GLENDA', 'HELLEN', 'ALINE', 'SUELHY', 'JAQUELINE', 'CLARISSA', 'JÚLIO'],
+  'CUSTO':                                  ['SIM', 'NÃO', 'NÃO SE APLICA'],
+  'PUBLICAÇÃO NO TRANSFEREGOV':             ['SIM', 'NÃO'],
+  'TRAMITADO PARA CGAP':                    ['SIM', 'NÃO', 'NÃO SE APLICA'],
 };
 
-const ROBO_COLS = ['INSTRUMENTO', 'PUBLICAÇÃO NO TRANSFEREGOV', 'PROPONENTE', 'NÚMERO DO PROCESSO', 'DATA INÍCIO DE VIGÊNCIA'];
+const ROBO_COLS = ['INSTRUMENTO', 'PUBLICAÇÃO NO TRANSFEREGOV', 'ENTIDADE', 'PROCESSO', 'DATA DA PUBLICAÇÃO'];
+const HIDDEN_COLS = ['id', 'created_at', 'vazia_1', 'vazia_2', 'updated_at', 'ultima_coluna_editada'];
 
-// Formata data para pt-BR
+const ANOS = ['Todos', '2023', '2024', '2025', '2026'];
+
 const fmtDate = iso => {
-  if (!iso) return '—';
+  if (!iso) return null;
   try {
     return new Date(iso).toLocaleString('pt-BR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
-  } catch { return '—'; }
+  } catch { return null; }
 };
 
-const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=DM+Mono:wght@400;500&display=swap');
+const fmtCurrency = v => {
+  const n = parseFloat(v) || 0;
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { font-family: 'DM Sans', sans-serif; background: #ECEEF2; height: 100vh; overflow: hidden; }
+const isCellEmpty = v => v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '—';
 
-  :root {
-    --blue:       #1D4ED8; --blue-h: #1E40AF; --blue-lt: #EFF6FF; --blue-md: #BFDBFE;
-    --green:      #059669; --green-lt: #ECFDF5;
-    --amber:      #D97706; --amber-lt: #FFFBEB;
-    --red:        #DC2626; --red-lt:   #FEF2F2;
-    --sky:        #0369A1; --sky-lt:   #F0F9FF; --sky-bd:  #BAE6FD;
-    --purple:     #7C3AED; --purple-lt: #F5F3FF; --purple-bd: #DDD6FE;
-    --slate:      #64748B;
-    --border:     #E2E8F0; --border2: #CBD5E1;
-    --text:       #0F172A; --text2: #475569; --text3: #94A3B8;
-    --bg:         #FFFFFF; --bg2: #F8FAFC;
-  }
-
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
-
-  .shell { display: flex; height: 100vh; overflow: hidden; }
-
-  /* ─── SIDEBAR ─── */
-  .sidebar { width: 252px; flex-shrink:0; background:var(--bg); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-  .sb-head { padding:16px 16px 13px; border-bottom:1px solid var(--border); }
-  .sb-brand { display:flex; align-items:center; gap:10px; }
-  .sb-icon { width:34px;height:34px;border-radius:9px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0; }
-  .sb-name { font-size:14px;font-weight:800;color:var(--text);letter-spacing:-.02em; }
-  .sb-name em { color:var(--blue);font-style:normal; }
-  .sb-sub  { font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-top:2px; }
-  .sb-body { flex:1;overflow-y:auto;padding:13px 13px 0; }
-  .sb-sec  { font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);display:flex;align-items:center;gap:5px;margin-bottom:10px; }
-  .fld { margin-bottom:9px; }
-  .fld-l { display:block;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:4px;padding-left:2px; }
-  .fld-i, .fld-s { width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;background:var(--bg2);outline:none;transition:border-color .14s,box-shadow .14s;appearance:none; }
-  .fld-i:focus,.fld-s:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff; }
-  .sel-w { position:relative; }
-  .sel-w::after { content:'';position:absolute;right:10px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--text3);pointer-events:none; }
-  .sb-foot { padding:11px 13px 13px;border-top:1px solid var(--border);flex-shrink:0; }
-  .btn-clear { width:100%;padding:9px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s; }
-  .btn-clear:hover { background:var(--bg2); }
-
-  /* ─── MAIN ─── */
-  .main { flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0; }
-
-  /* KPI */
-  .kpi-row { display:flex;gap:13px;padding:16px 18px 0;flex-shrink:0; }
-  .kpi { flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:13px 16px;border-top:3px solid transparent;transition:box-shadow .14s,transform .14s;cursor:default; }
-  .kpi:hover { box-shadow:0 4px 18px rgba(0,0,0,.07);transform:translateY(-1px); }
-  .kpi.bl { border-top-color:var(--blue); }
-  .kpi.gr { border-top-color:var(--green); }
-  .kpi.am { border-top-color:var(--amber); }
-  .kpi.re { border-top-color:var(--red); }
-  .kpi-v { font-size:24px;font-weight:800;color:var(--text);line-height:1;letter-spacing:-.03em; }
-  .kpi-l { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-top:4px; }
-
-  /* Table card */
-  .tcard { flex:1;margin:13px 18px 18px;background:var(--bg);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04); }
-
-  /* Toolbar */
-  .tbar { padding:11px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:9px;flex-shrink:0; }
-  .tbar-l { display:flex;align-items:center;gap:9px; }
-  .tbar-title { font-size:14px;font-weight:800;color:var(--text);letter-spacing:-.02em; }
-  .tbar-cnt { font-size:11px;font-weight:600;color:var(--blue);background:var(--blue-lt);border-radius:20px;padding:2px 9px; }
-  .tbar-r { display:flex;align-items:center;gap:7px; }
-
-  .sw { position:relative;display:flex;align-items:center; }
-  .sw svg { position:absolute;left:9px;color:var(--text3);pointer-events:none; }
-  .sw-i { padding:7px 26px 7px 30px;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text);width:230px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .14s,box-shadow .14s; }
-  .sw-i:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.08); }
-  .sw-i::placeholder { color:var(--text3); }
-  .sw-x { position:absolute;right:7px;background:none;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;padding:2px;border-radius:4px; }
-  .sw-x:hover { color:var(--text); }
-
-  .lbl-flt { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3); }
-  .vdiv { width:1px;height:20px;background:var(--border);margin:0 1px; }
-
-  .ibtn { padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:background .14s,color .14s; }
-  .ibtn:hover { background:var(--bg2);color:var(--text); }
-  .ibtn.g { border-color:#A7F3D0;background:var(--green-lt);color:var(--green); }
-  .ibtn.g:hover { background:#D1FAE5; }
-
-  .btn-save { display:flex;align-items:center;gap:5px;padding:7px 12px;background:var(--amber);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s; }
-  .btn-save:hover { background:#B45309; }
-  .btn-save:disabled { opacity:.55;cursor:not-allowed; }
-
-  .btn-pri { display:flex;align-items:center;gap:5px;padding:7px 13px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s; }
-  .btn-pri:hover { background:var(--blue-h); }
-
-  .btn-del-sel { display:flex;align-items:center;gap:5px;padding:7px 12px;background:var(--red-lt);color:var(--red);border:1px solid #FECACA;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s; }
-  .btn-del-sel:hover { background:#FEE2E2; }
-
-  /* Table */
-  .tscroll { flex:1;overflow:auto; }
-  table { width:100%;border-collapse:collapse; }
-  thead th { position:sticky;top:0;z-index:10;background:#F8FAFC;padding:9px 12px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;user-select:none; }
-  thead th.s { cursor:pointer; }
-  thead th.s:hover { background:#EFF6FF;color:var(--blue); }
-  thead th.robo { color:var(--sky);background:var(--sky-lt); }
-  thead th.robo:hover { background:#E0F2FE; }
-  thead th.audit { color:var(--purple);background:var(--purple-lt); }
-  thead th.audit:hover { background:#EDE9FE; }
-  .th-in { display:flex;align-items:center;gap:4px; }
-  .si { font-size:9px;opacity:.35; }
-
-  tbody tr { transition:background .08s;position:relative; }
-  tbody tr:hover { background:#F8FAFC; }
-  tbody tr + tr { border-top:1px solid #F1F5F9; }
-  tbody tr.sel { background:#EFF6FF !important; }
-  tbody td { padding:8px 12px;font-size:11.5px;color:var(--text);vertical-align:middle; }
-
-  .td-p { font-weight:700;color:var(--blue);font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap; }
-  .td-v { font-weight:700;color:var(--text);font-size:11px;white-space:nowrap;font-family:'DM Mono',monospace; }
-  .td-robo { color:var(--sky);font-size:11px;background:var(--sky-lt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:block; }
-  .td-audit-date { font-size:11px;color:var(--purple);font-family:'DM Mono',monospace;white-space:nowrap; }
-  .td-audit-col { display:inline-flex;align-items:center;font-size:10px;font-weight:700;background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple-bd);border-radius:20px;padding:2px 8px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis; }
-
-  .badge { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.02em; }
-  .badge::before { content:'';width:5px;height:5px;border-radius:50%;flex-shrink:0; }
-  .bg-g  { background:var(--green-lt);color:var(--green); }  .bg-g::before  { background:var(--green); }
-  .bg-r  { background:var(--red-lt);color:var(--red); }      .bg-r::before  { background:var(--red); }
-  .bg-a  { background:var(--amber-lt);color:var(--amber); }  .bg-a::before  { background:var(--amber); }
-  .bg-bl { background:var(--blue-lt);color:var(--blue); }    .bg-bl::before { background:var(--blue); }
-  .bg-sl { background:#F1F5F9;color:var(--slate); }          .bg-sl::before { background:var(--slate); }
-
-  .csel { padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;background:#fff;cursor:pointer;transition:border-color .12s;min-width:120px;appearance:none; }
-  .csel:focus { border-color:var(--blue);box-shadow:0 0 0 2px rgba(29,78,216,.08); }
-  .csel.ed { border-color:var(--amber);box-shadow:0 0 0 2px rgba(217,119,6,.12);background:var(--amber-lt); }
-
-  .del-row { opacity:0;padding:5px;background:none;border:none;color:var(--text3);cursor:pointer;border-radius:6px;display:flex;align-items:center;transition:opacity .12s,background .12s,color .12s; }
-  tbody tr:hover .del-row { opacity:1; }
-  .del-row:hover { background:var(--red-lt);color:var(--red); }
-
-  .cb { width:14px;height:14px;cursor:pointer;accent-color:var(--blue); }
-
-  .robo-tag { display:inline-flex;align-items:center;gap:2px;font-size:8px;font-weight:700;text-transform:uppercase;background:var(--sky-lt);color:var(--sky);border:1px solid var(--sky-bd);border-radius:4px;padding:1px 5px;margin-left:4px; }
-  .audit-tag { display:inline-flex;align-items:center;gap:2px;font-size:8px;font-weight:700;text-transform:uppercase;background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple-bd);border-radius:4px;padding:1px 5px;margin-left:4px; }
-
-  /* ── TOOLTIP ── */
-  .tt-wrap { position:relative;display:inline-flex;align-items:center; }
-  .tt-wrap .tt {
-    display:none;position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);
-    background:#0F172A;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:500;
-    white-space:nowrap;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none;
-    line-height:1.5;min-width:180px;text-align:left;
-  }
-  .tt-wrap .tt::after {
-    content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    border:5px solid transparent;border-top-color:#0F172A;
-  }
-  .tt-wrap:hover .tt { display:block; }
-  .tt strong { color:#93C5FD;font-weight:700; }
-
-  /* Footer */
-  .tfoot { padding:10px 15px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#FAFBFC; }
-  .pg-info { font-size:11px;color:var(--text2); }
-  .pg-info b { color:var(--text);font-weight:700; }
-  .pg-ctrl { display:flex;align-items:center;gap:6px; }
-  .pg-lbl { font-size:11px;color:var(--text2);font-weight:600; }
-  .pg-size { padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fff;cursor:pointer;outline:none; }
-  .pg-btn { padding:5px 11px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;background:#fff;color:var(--text2);cursor:pointer;transition:background .12s,color .12s,border-color .12s;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:3px; }
-  .pg-btn:hover:not(:disabled) { background:var(--blue);color:#fff;border-color:var(--blue); }
-  .pg-btn:disabled { opacity:.3;cursor:not-allowed; }
-  .pg-cur { font-size:11px;color:var(--text2);font-weight:600;padding:0 2px; }
-
-  /* ─── MODALS ─── */
-  .overlay { position:fixed;inset:0;z-index:300;background:rgba(15,23,42,.5);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:20px; }
-  .modal { background:#fff;border-radius:14px;padding:28px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.18);animation:popIn .2s ease; }
-  @keyframes popIn { from{opacity:0;transform:scale(.95) translateY(8px)} }
-  .modal-sm { max-width:420px; }
-  .modal-lg { max-width:600px; }
-  .m-ico { width:52px;height:52px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px; }
-  .m-ico.red   { background:var(--red-lt);color:var(--red); }
-  .m-ico.blue  { background:var(--blue-lt);color:var(--blue); }
-  .modal h2 { font-size:17px;font-weight:800;text-align:center;color:var(--text);margin-bottom:6px;letter-spacing:-.02em; }
-  .m-desc { font-size:13px;color:var(--text2);text-align:center;line-height:1.6;margin-bottom:20px; }
-  .m-desc b { color:var(--text);font-weight:700; }
-  .m-acts { display:flex;gap:8px; }
-  .m-acts button { flex:1;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .12s; }
-  .act-cancel { background:#F1F5F9;border:1px solid var(--border);color:var(--text2); }
-  .act-cancel:hover { background:#E2E8F0; }
-  .act-del { background:var(--red);border:none;color:#fff; }
-  .act-del:hover { background:#B91C1C; }
-  .act-ok { background:var(--blue);border:none;color:#fff; }
-  .act-ok:hover { background:var(--blue-h); }
-  .act-ok:disabled { opacity:.4;cursor:not-allowed; }
-  .mfld { margin-bottom:13px; }
-  .mfld-l { display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:5px; }
-  .mfld-i { width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;background:var(--bg2);outline:none;transition:border-color .14s,box-shadow .14s; }
-  .mfld-i:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff; }
-  .mfld-i::placeholder { color:var(--text3); }
-  .notice { border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5;margin-bottom:14px; }
-  .notice svg { flex-shrink:0;margin-top:1px; }
-  .notice.sky   { background:var(--sky-lt);border:1px solid var(--sky-bd);color:var(--sky); }
-  .notice.green { background:var(--green-lt);border:1px solid #A7F3D0;color:#065F46; }
-  .tabs { display:flex;background:#F1F5F9;border-radius:9px;padding:3px;margin-bottom:16px; }
-  .tab { flex:1;padding:8px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .14s,color .14s;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:6px; }
-  .tab.on { background:#fff;color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1); }
-  .dz { border:2px dashed var(--border2);border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:border-color .14s,background .14s;margin-bottom:12px;background:var(--bg2); }
-  .dz:hover,.dz.over { border-color:var(--blue);background:var(--blue-lt); }
-  .dz-ic { color:var(--text3);margin:0 auto 8px;display:block; }
-  .dz-t { font-size:13px;font-weight:600;color:var(--text2); }
-  .dz-s { font-size:11px;color:var(--text3);margin-top:2px; }
-  .prev-wrap { max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px; }
-  .prev-t { width:100%;border-collapse:collapse;font-size:11px; }
-  .prev-t th { background:#F8FAFC;padding:6px 10px;text-align:left;font-weight:700;color:var(--text2);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase; }
-  .prev-t td { padding:5px 10px;color:var(--text);border-bottom:1px solid #F1F5F9; }
-  .toast { position:fixed;top:15px;left:50%;transform:translateX(-50%);z-index:999;padding:10px 18px;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.02em;box-shadow:0 8px 28px rgba(0,0,0,.14);animation:slideD .25s ease;white-space:nowrap; }
-  .toast.success { background:#0F172A;color:#fff; }
-  .toast.error   { background:var(--red);color:#fff; }
-  @keyframes slideD { from{opacity:0;transform:translateX(-50%) translateY(-10px)} }
-  .load-scr { height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;background:#ECEEF2; }
-  .spin { width:30px;height:30px;border:3px solid #E2E8F0;border-top-color:var(--blue);border-radius:50%;animation:rot .65s linear infinite; }
-  @keyframes rot { to{transform:rotate(360deg)} }
-  .load-t { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--text3); }
-`;
-
+// ─── BADGE ───────────────────────────────────────────────────────────────────
 function Badge({ value }) {
-  if (!value) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
-  const v = String(value).toUpperCase();
-  let c = 'bg-sl';
-  if (['SIM','REALIZADO','PUBLICADO'].includes(v)) c = 'bg-g';
-  else if (['NÃO','PENDENTE'].includes(v)) c = 'bg-r';
-  else if (v === 'NÃO SE APLICA') c = 'bg-a';
-  else if (['SOLICITADO','FORMALIZAR','CONJUR'].includes(v)) c = 'bg-bl';
-  return <span className={`badge ${c}`}>{value}</span>;
+  if (!value || value === '—') return <span className="empty-dash">—</span>;
+  const v = String(value).toUpperCase().trim();
+  let cls = 'neutral';
+  if (['SIM', 'REALIZADO', 'FORMALIZAR'].includes(v))          cls = 'success';
+  else if (['NÃO', 'REJEITAR'].includes(v))                     cls = 'danger';
+  else if (['PENDENTE', 'SOLICITADO', 'CONJUR'].includes(v))    cls = 'warning';
+  else if (v === 'NÃO SE APLICA')                               cls = 'muted';
+  else if (['PORTARIA 64/2025'].includes(v))                    cls = 'info';
+  return <span className={`badge b-${cls}`}>{value}</span>;
 }
 
-// Tooltip de auditoria exibido ao passar o mouse na célula de data
-function AuditTooltip({ date, col, children }) {
-  return (
-    <div className="tt-wrap">
-      {children}
-      <div className="tt">
-        <div style={{ marginBottom: 4 }}>
-          <strong>Última atualização</strong>
-        </div>
-        <div>📅 {date || '—'}</div>
-        {col && <div style={{ marginTop: 4 }}>✏️ Coluna: <strong>{col}</strong></div>}
+// ─── EDITABLE CELL ───────────────────────────────────────────────────────────
+function EditableCell({ value, colKey, rowId, editedCells, setEditedCells }) {
+  const [editing, setEditing]   = useState(false);
+  const [localVal, setLocalVal] = useState('');
+  const inputRef = useRef(null);
+  const cellId   = `${rowId}::${colKey}`;
+  const cur      = editedCells[cellId] !== undefined ? editedCells[cellId] : (value ?? '');
+  const isDirty  = editedCells[cellId] !== undefined;
+  const isSelect = !!SELECT_OPTIONS[colKey];
+  const isEmpty  = isCellEmpty(cur);
+
+  const startEdit = () => { setLocalVal(cur); setEditing(true); setTimeout(() => inputRef.current?.focus(), 40); };
+  const commit    = () => { setEditedCells(p => ({ ...p, [cellId]: localVal })); setEditing(false); };
+  const discard   = () => setEditing(false);
+
+  if (isSelect) {
+    return (
+      <div className={`sel-wrap${isDirty ? ' dirty' : ''}${isEmpty ? ' empty-val' : ''}`}>
+        <select
+          value={cur}
+          className="cell-sel"
+          onChange={e => setEditedCells(p => ({ ...p, [cellId]: e.target.value }))}
+        >
+          <option value="">—</option>
+          {SELECT_OPTIONS[colKey].map(o => <option key={o}>{o}</option>)}
+        </select>
+        {isDirty && <span className="dot-dirty" />}
       </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="ie-wrap">
+        <input
+          ref={inputRef}
+          className="ie-input"
+          value={localVal}
+          onChange={e => setLocalVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') discard(); }}
+        />
+        <button className="ie-btn ok" onClick={commit}><Check size={10} /></button>
+        <button className="ie-btn no" onClick={discard}><XCircle size={10} /></button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`txt-cell${isDirty ? ' dirty' : ''}${isEmpty ? ' empty-val' : ''}`}
+      onClick={startEdit}
+      title="Clique para editar"
+    >
+      {isEmpty
+        ? <span className="empty-dash clickable">Clique para preencher</span>
+        : <span className="txt-val">{cur}</span>
+      }
+      <Edit3 size={9} className="pencil" />
+      {isDirty && <span className="dot-dirty" />}
     </div>
   );
 }
 
+// ─── MAIN ────────────────────────────────────────────────────────────────────
 export default function TabelaGerencialMaster() {
-  const navigate = useNavigate();
-
   const [data, setData]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
@@ -301,20 +144,25 @@ export default function TabelaGerencialMaster() {
   const [editedCells, setEditedCells] = useState({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [selectedRows, setSelectedRows] = useState(new Set());
-
-  const [delModal, setDelModal]     = useState({ open: false, single: null });
-  const [newModal, setNewModal]     = useState(false);
-  const [newTab, setNewTab]         = useState('manual');
-  const [newProposta, setNewProposta] = useState('');
-  const [excelFile, setExcelFile]   = useState(null);
-  const [excelError, setExcelError] = useState('');
-  const [dragover, setDragover]     = useState(false);
+  const [sidebarOpen, setSidebarOpen]   = useState(true);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [newModal, setNewModal]         = useState(false);
+  const [newTab, setNewTab]             = useState('manual');
+  const [newProposta, setNewProposta]   = useState('');
+  const [excelFile, setExcelFile]       = useState(null);
+  const [excelError, setExcelError]     = useState('');
+  const [dragover, setDragover]         = useState(false);
+  const [colVisibility, setColVisibility] = useState({});
+  const [showColPanel, setShowColPanel]   = useState(false);
+  const [activeTab, setActiveTab]         = useState('filters'); // 'filters' | 'empty' | 'columns'
   const fileRef = useRef(null);
 
   const [filters, setFilters] = useState({
-    proposta: '', modalidade: 'Todas', situacao: 'Todas',
-    empenhado: 'Todos', publicacao: 'Todas',
-    processo: '', proponente: '', tecnico: 'Todos',
+    proposta: '', instrumento: 'Todos', ajuste: 'Todos',
+    empenho: 'Todos', tecnico: 'Todos', uf: 'Todos',
+    processo: '', entidade: '', ano: 'Todos',
+    emptyCols: [],   // columns that must be empty
+    filledCols: [],  // columns that must be filled
   });
 
   // ── fetch ──
@@ -341,24 +189,46 @@ export default function TabelaGerencialMaster() {
 
   const notify = (type, text) => {
     setMessage({ type, text });
-    setTimeout(() => setMessage(null), 4000);
+    setTimeout(() => setMessage(null), 4500);
   };
 
-  // ── filtros ──
+  // ── all visible columns for empty/filled filter ──
+  const allEditableCols = useMemo(() => {
+    if (!data.length) return [];
+    return Object.keys(data[0]).filter(k => !HIDDEN_COLS.includes(k));
+  }, [data]);
+
+  // ── filtered ──
   const filteredData = useMemo(() => data.filter(row => {
     const f = filters;
-    if (f.proposta   && !String(row['PROPOSTA'] || '').toLowerCase().includes(f.proposta.toLowerCase())) return false;
-    if (f.modalidade !== 'Todas' && row['INSTRUMENTO'] !== f.modalidade) return false;
-    if (f.situacao   !== 'Todas' && row['AJUSTE'] !== f.situacao) return false;
-    if (f.empenhado  !== 'Todos') {
-      const e = String(row['CANCELAR EMPENHO'] || '').toLowerCase();
-      if (f.empenhado === 'Sim' && e !== 'sim') return false;
-      if (f.empenhado === 'Não' && e !== 'não') return false;
+    if (f.proposta && !String(row['PROPOSTA'] || '').toLowerCase().includes(f.proposta.toLowerCase())) return false;
+    if (f.instrumento !== 'Todos' && row['INSTRUMENTO'] !== f.instrumento) return false;
+    if (f.ajuste !== 'Todos' && row['AJUSTE'] !== f.ajuste) return false;
+    if (f.empenho !== 'Todos') {
+      const e = String(row['CANCELAR EMPENHO'] || '').toUpperCase();
+      if (f.empenho === 'SIM' && e !== 'SIM') return false;
+      if (f.empenho === 'NÃO' && e !== 'NÃO') return false;
     }
-    if (f.publicacao !== 'Todas' && row['PUBLICAÇÃO NO TRANSFEREGOV'] !== f.publicacao) return false;
-    if (f.processo   && !String(row['NÚMERO DO PROCESSO'] || '').toLowerCase().includes(f.processo.toLowerCase())) return false;
-    if (f.proponente && !String(row['PROPONENTE'] || '').toLowerCase().includes(f.proponente.toLowerCase())) return false;
-    if (f.tecnico    !== 'Todos' && row['TÉCNICO DE FORMALIZAÇÃO'] !== f.tecnico) return false;
+    if (f.tecnico !== 'Todos' && row['TÉCNICO DE FORMALIZAÇÃO'] !== f.tecnico) return false;
+    if (f.uf !== 'Todos' && row['UF'] !== f.uf) return false;
+    if (f.processo && !String(row['PROCESSO'] || '').toLowerCase().includes(f.processo.toLowerCase())) return false;
+    if (f.entidade && !String(row['ENTIDADE'] || '').toLowerCase().includes(f.entidade.toLowerCase())) return false;
+
+    // Year filter — extracts year from PROPOSTA (e.g. "024721/2025")
+    if (f.ano !== 'Todos') {
+      const prop = String(row['PROPOSTA'] || '');
+      const match = prop.match(/\/(\d{4})$/);
+      if (!match || match[1] !== f.ano) return false;
+    }
+
+    // Empty / Filled column filters
+    for (const col of f.emptyCols) {
+      if (!isCellEmpty(row[col])) return false;
+    }
+    for (const col of f.filledCols) {
+      if (isCellEmpty(row[col])) return false;
+    }
+
     if (globalFilter) {
       const gf = globalFilter.toLowerCase();
       return Object.values(row).some(v => String(v || '').toLowerCase().includes(gf));
@@ -366,27 +236,48 @@ export default function TabelaGerencialMaster() {
     return true;
   }), [data, filters, globalFilter]);
 
-  // ── KPI ──
-  const stats = useMemo(() => ({
-    total:        data.length,
-    termoFomento: data.filter(d => d['INSTRUMENTO'] === 'TERMO DE FOMENTO').length,
-    convenio:     data.filter(d => d['INSTRUMENTO'] === 'CONVÊNIO').length,
-    valorTotal:   data.reduce((s, r) => s + (parseFloat(r['VALOR REPASSE']) || 0), 0),
-  }), [data]);
+  // ── stats ──
+  const stats = useMemo(() => {
+    const total = data.length;
+    const byInstrumento = data.reduce((acc, r) => {
+      const k = r['INSTRUMENTO'] || 'Outros';
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    const pendentes = data.filter(d => d['AJUSTE'] === 'PENDENTE').length;
+    const realizados = data.filter(d => d['AJUSTE'] === 'REALIZADO').length;
+    const valorTotal = data.reduce((s, r) => s + (parseFloat(r['VALOR REPASSE']) || 0), 0);
 
-  // ── colunas ──
+    // Empty stats per column
+    const emptyStats = {};
+    for (const col of allEditableCols) {
+      emptyStats[col] = data.filter(r => isCellEmpty(r[col])).length;
+    }
+
+    // By year
+    const byYear = data.reduce((acc, r) => {
+      const prop  = String(r['PROPOSTA'] || '');
+      const match = prop.match(/\/(\d{4})$/);
+      const year  = match ? match[1] : 'Outro';
+      acc[year] = (acc[year] || 0) + 1;
+      return acc;
+    }, {});
+
+    return { total, byInstrumento, pendentes, realizados, valorTotal, emptyStats, byYear };
+  }, [data, allEditableCols]);
+
+  // ── columns ──
   const columns = useMemo(() => {
-    // Oculta colunas de sistema e as de auditoria (vão aparecer num lugar específico)
-    const hidden = ['id','created_at','vazia_1','vazia_2','SITUACIONAL','Coluna1','updated_at','ultima_coluna_editada'];
-    const fixed  = ['PROPOSTA','VALOR REPASSE'];
-    const dyn    = data.length > 0
-      ? Object.keys(data[0]).filter(k => !hidden.includes(k) && !fixed.includes(k))
-      : [];
+    const allKeys = data.length > 0 ? Object.keys(data[0]) : [];
+    const fixed   = ['PROPOSTA', 'INSTRUMENTO', 'VALOR REPASSE'];
+    const dyn     = allKeys.filter(k =>
+      !HIDDEN_COLS.includes(k) && !fixed.includes(k) && k !== 'Nº' && k !== 'ANO'
+    );
 
     return [
-      // ── checkbox ──
+      // checkbox
       {
-        id: 'sel',
+        id: 'sel', size: 44,
         header: () => (
           <input type="checkbox" className="cb"
             checked={selectedRows.size === filteredData.length && filteredData.length > 0}
@@ -395,7 +286,6 @@ export default function TabelaGerencialMaster() {
               else setSelectedRows(new Set());
             }} />
         ),
-        size: 36,
         cell: ({ row }) => (
           <input type="checkbox" className="cb"
             checked={selectedRows.has(row.original.id)}
@@ -406,108 +296,133 @@ export default function TabelaGerencialMaster() {
             }} />
         ),
       },
-      // ── delete ──
+      // row number
       {
-        id: 'del', header: '', size: 36,
-        cell: ({ row }) => (
-          <button className="del-row" title="Excluir"
-            onClick={() => setDelModal({ open: true, single: row.original })}>
-            <Trash2 size={13} />
-          </button>
+        id: 'rownum', size: 50,
+        header: () => <span style={{ color: 'var(--c3)' }}>#</span>,
+        cell: ({ row }) => <span className="row-num">{row.index + 1}</span>,
+      },
+      // proposta
+      {
+        accessorKey: 'PROPOSTA', header: 'PROPOSTA', size: 150,
+        cell: ({ getValue, row }) => (
+          <EditableCell value={getValue()} colKey="PROPOSTA" rowId={row.original.id}
+            editedCells={editedCells} setEditedCells={setEditedCells} />
         ),
       },
-      // ── proposta ──
+      // instrumento
       {
-        accessorKey: 'PROPOSTA', header: 'Nº PROPOSTA', size: 130,
-        cell: ({ getValue }) => <span className="td-p">{getValue()}</span>,
-      },
-      // ── valor ──
-      {
-        accessorKey: 'VALOR REPASSE', header: 'VALOR REPASSE', size: 140,
-        cell: ({ getValue }) => {
-          const v = parseFloat(getValue()) || 0;
-          return <span className="td-v">{v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>;
-        },
-      },
-      // ── COLUNA DE AUDITORIA — última atualização ──
-      {
-        id: 'auditoria',
-        header: () => (
-          <div className="th-in">
-            <Clock size={10} /> ÚLTIMA ATUALIZAÇÃO
-            <span className="audit-tag">audit</span>
-          </div>
-        ),
-        size: 220,
-        cell: ({ row }) => {
-          const updatedAt = row.original.updated_at;
-          const colEditada = row.original.ultima_coluna_editada;
-          const dateStr = fmtDate(updatedAt);
-
-          if (!updatedAt) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
-
+        accessorKey: 'INSTRUMENTO', header: 'INSTRUMENTO', size: 220,
+        cell: ({ getValue, row }) => {
+          const v = getValue() || '';
+          const cls = v === 'CONVÊNIO' ? 'conv' : v.includes('FOMENTO') ? 'fom' : v.includes('DESC') ? 'ted' : '';
           return (
-            <AuditTooltip date={dateStr} col={colEditada}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span className="td-audit-date">📅 {dateStr}</span>
-                {colEditada && (
-                  <span className="td-audit-col" title={colEditada}>
-                    ✏️ {colEditada}
-                  </span>
-                )}
-              </div>
-            </AuditTooltip>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {v && <span className={`inst-tag ${cls}`}>{v}</span>}
+              {!v && <EditableCell value={v} colKey="INSTRUMENTO" rowId={row.original.id}
+                editedCells={editedCells} setEditedCells={setEditedCells} />}
+            </div>
           );
         },
       },
-      // ── colunas dinâmicas ──
-      ...dyn.map(key => {
-        const isRobo = ROBO_COLS.includes(key);
-        return {
-          accessorKey: key,
-          header: () => (
-            <div className="th-in">
-              {key}
-              {isRobo && <span className="robo-tag"><Bot size={8} />robô</span>}
+      // valor
+      {
+        accessorKey: 'VALOR REPASSE', header: 'VALOR REPASSE', size: 160,
+        cell: ({ getValue, row }) => (
+          <EditableCell value={getValue()} colKey="VALOR REPASSE" rowId={row.original.id}
+            editedCells={editedCells} setEditedCells={setEditedCells} />
+        ),
+      },
+      // audit
+      {
+        id: 'audit', size: 200,
+        header: () => <span className="hdr-audit"><Clock size={10} />ÚLTIMA EDIÇÃO</span>,
+        cell: ({ row }) => {
+          const upd = row.original.updated_at;
+          const col = row.original.ultima_coluna_editada;
+          if (!upd) return <span className="empty-dash">—</span>;
+          return (
+            <div className="audit-cell">
+              <span className="audit-ts">{fmtDate(upd)}</span>
+              {col && <span className="audit-col">{col}</span>}
             </div>
-          ),
-          size: 190,
-          cell: ({ getValue, row }) => {
-            const val = getValue();
-            const cellId = `${row.original.id}::${key}`;
-            const cur = editedCells[cellId] ?? val;
-
-            if (isRobo) return <span className="td-robo" title={cur || ''}>{cur || '—'}</span>;
-
-            if (SELECT_OPTIONS[key]) return (
-              <select value={cur ?? ''} className={`csel${editedCells[cellId] ? ' ed' : ''}`}
-                onChange={e => setEditedCells(p => ({ ...p, [cellId]: e.target.value }))}>
-                <option value="">—</option>
-                {SELECT_OPTIONS[key].map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            );
-
-            return <Badge value={cur} />;
-          },
-        };
-      }),
+          );
+        },
+      },
+      // dynamic
+      ...dyn
+        .filter(key => colVisibility[key] !== false)
+        .map(key => {
+          const isRobo = ROBO_COLS.includes(key);
+          return {
+            accessorKey: key,
+            size: 200,
+            header: () => (
+              <span className="th-inner">
+                {key}
+                {isRobo && <span className="robo-chip"><Bot size={7} />BOT</span>}
+              </span>
+            ),
+            cell: ({ getValue, row }) => {
+              const val = getValue();
+              if (isRobo) return (
+                <span className="cell-robo" title={val || ''}>{val || <span className="empty-dash">—</span>}</span>
+              );
+              return (
+                <EditableCell
+                  value={val}
+                  colKey={key}
+                  rowId={row.original.id}
+                  editedCells={editedCells}
+                  setEditedCells={setEditedCells}
+                />
+              );
+            },
+          };
+        }),
+      // delete
+      {
+        id: 'del', size: 50,
+        header: '',
+        cell: ({ row }) => (
+          <button className="del-btn" title="Excluir"
+            onClick={() => setConfirmModal({
+              type: 'delete-single', payload: row.original,
+              title: 'Excluir Registro',
+              message: <>Excluir permanentemente a proposta <strong>{row.original.PROPOSTA}</strong>? Não é possível desfazer.</>,
+              confirmLabel: 'Excluir', confirmClass: 'btn-danger',
+            })}>
+            <Trash2 size={12} />
+          </button>
+        ),
+      },
     ];
-  }, [data, editedCells, selectedRows, filteredData]);
+  }, [data, editedCells, selectedRows, filteredData, colVisibility]);
 
   const table = useReactTable({
     data: filteredData, columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 10 } },
+    initialState: { pagination: { pageSize: 20 } },
   });
 
   const { pageIndex, pageSize } = table.getState().pagination;
   const totalFiltered = filteredData.length;
-  const pageCount = table.getPageCount();
+  const pageCount     = table.getPageCount();
+  const dirtyCount    = Object.keys(editedCells).length;
 
-  // ── salvar — grava também qual coluna foi editada ──
-  const handleSave = async () => {
+  // ── save ──
+  const handleSave = () => {
+    if (!dirtyCount) return;
+    setConfirmModal({
+      type: 'save', title: 'Salvar Alterações',
+      message: <>Salvar <strong>{dirtyCount} alteração(ões)</strong> pendentes?</>,
+      confirmLabel: 'Salvar', confirmClass: 'btn-success',
+    });
+  };
+
+  const executeSave = async () => {
     setSaving(true);
     try {
       const upd = {};
@@ -515,7 +430,6 @@ export default function TabelaGerencialMaster() {
         const [id, key] = cellId.split('::');
         if (!upd[id]) upd[id] = { id };
         upd[id][key] = value;
-        // Sobrescreve com a última coluna editada deste registro
         upd[id]['ultima_coluna_editada'] = key;
       }
       for (const u of Object.values(upd)) {
@@ -529,37 +443,41 @@ export default function TabelaGerencialMaster() {
     finally { setSaving(false); }
   };
 
+  const executeDelete = async (payload) => {
+    if (payload) {
+      await supabase.from('formalizacoes').delete().eq('id', payload.id);
+      setSelectedRows(s => { const n = new Set(s); n.delete(payload.id); return n; });
+      notify('success', `Proposta ${payload.PROPOSTA} excluída.`);
+    } else {
+      const ids = Array.from(selectedRows);
+      await supabase.from('formalizacoes').delete().in('id', ids);
+      setSelectedRows(new Set());
+      notify('success', `${ids.length} registro(s) excluído(s).`);
+    }
+    fetchAllData();
+  };
+
+  const handleConfirm = async () => {
+    const m = confirmModal;
+    setConfirmModal(null);
+    if (m.type === 'save')          await executeSave();
+    if (m.type === 'delete-single') await executeDelete(m.payload);
+    if (m.type === 'delete-many')   await executeDelete(null);
+  };
+
   const exportToExcel = () => {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Formalizações');
-    XLSX.writeFile(wb, 'Relatorio_MESP.xlsx');
-  };
-
-  const handleDeleteSingle = async () => {
-    const row = delModal.single;
-    await supabase.from('formalizacoes').delete().eq('id', row.id);
-    setDelModal({ open: false, single: null });
-    setSelectedRows(s => { const n = new Set(s); n.delete(row.id); return n; });
-    notify('success', 'Registro excluído.');
-    fetchAllData();
-  };
-
-  const handleDeleteSelected = async () => {
-    const ids = Array.from(selectedRows);
-    await supabase.from('formalizacoes').delete().in('id', ids);
-    setDelModal({ open: false, single: null });
-    setSelectedRows(new Set());
-    notify('success', `${ids.length} registro(s) excluído(s).`);
-    fetchAllData();
+    XLSX.writeFile(wb, `Formalizacoes_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   const handleNewManual = async () => {
     const p = newProposta.trim();
     if (!p) return;
     const { error } = await supabase.from('formalizacoes').insert([{ PROPOSTA: p }]);
-    if (error) { notify('error', 'Erro ao inserir.'); return; }
-    notify('success', `Proposta ${p} criada. O robô preencherá os demais dados.`);
+    if (error) { notify('error', 'Erro ao criar.'); return; }
+    notify('success', `Proposta ${p} criada.`);
     setNewModal(false); setNewProposta(''); fetchAllData();
   };
 
@@ -572,9 +490,9 @@ export default function TabelaGerencialMaster() {
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
         const col  = Object.keys(rows[0] || {}).find(k => k.toLowerCase().includes('proposta'));
-        if (!col) { setExcelError('Nenhuma coluna com "PROPOSTA" encontrada. Verifique o arquivo.'); return; }
+        if (!col) { setExcelError('Coluna "PROPOSTA" não encontrada.'); return; }
         setExcelFile({ name: file.name, col, rows: rows.filter(r => r[col]) });
-      } catch { setExcelError('Erro ao ler o arquivo. Use .xlsx ou .xls válido.'); }
+      } catch { setExcelError('Erro ao ler arquivo. Use .xlsx ou .xls válido.'); }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -584,421 +502,1163 @@ export default function TabelaGerencialMaster() {
     const inserts = excelFile.rows.map(r => ({ PROPOSTA: String(r[excelFile.col]).trim() }));
     const { error } = await supabase.from('formalizacoes').insert(inserts);
     if (error) { notify('error', 'Erro ao importar.'); return; }
-    notify('success', `${inserts.length} proposta(s) importada(s). O robô preencherá os dados.`);
+    notify('success', `${inserts.length} proposta(s) importada(s).`);
     setNewModal(false); setExcelFile(null); fetchAllData();
   };
 
+  const clearFilters = () => {
+    setFilters({ proposta:'', instrumento:'Todos', ajuste:'Todos', empenho:'Todos', tecnico:'Todos', uf:'Todos', processo:'', entidade:'', ano:'Todos', emptyCols:[], filledCols:[] });
+    setGlobalFilter('');
+  };
+
+  const hasFilters = filters.proposta || filters.instrumento !== 'Todos' || filters.ajuste !== 'Todos' ||
+    filters.empenho !== 'Todos' || filters.tecnico !== 'Todos' || filters.uf !== 'Todos' ||
+    filters.processo || filters.entidade || filters.ano !== 'Todos' ||
+    filters.emptyCols.length || filters.filledCols.length || globalFilter;
+
+  const toggleEmptyCol = col => setFilters(p => {
+    const arr = p.emptyCols.includes(col) ? p.emptyCols.filter(c => c !== col) : [...p.emptyCols, col];
+    return { ...p, emptyCols: arr, filledCols: p.filledCols.filter(c => c !== col) };
+  });
+
+  const toggleFilledCol = col => setFilters(p => {
+    const arr = p.filledCols.includes(col) ? p.filledCols.filter(c => c !== col) : [...p.filledCols, col];
+    return { ...p, filledCols: arr, emptyCols: p.emptyCols.filter(c => c !== col) };
+  });
+
+  // ── loading screen ──
   if (loading && !data.length) return (
-    <><style>{STYLES}</style>
-      <div className="load-scr">
-        <div className="spin" />
-        <p className="load-t">Carregando… {progress}%</p>
+    <>
+      <style>{CSS}</style>
+      <div className="load-screen">
+        <div className="load-ring" />
+        <div className="load-label">Carregando dados — {progress}%</div>
+        <div className="load-track"><div className="load-fill" style={{ width: `${progress}%` }} /></div>
       </div>
     </>
   );
 
   return (
-    <><style>{STYLES}</style>
-    <div className="shell">
+    <>
+      <style>{CSS}</style>
+      <div className="app">
 
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sb-head">
-          <div className="sb-brand">
-            <div className="sb-icon">M</div>
-            <div>
-              <div className="sb-name">GERENCIAL <em>MESP</em></div>
-              <div className="sb-sub">Painel de Controle</div>
+        {/* ─── SIDEBAR ─── */}
+        <aside className={`sidebar${sidebarOpen ? '' : ' sb-collapsed'}`}>
+          <div className="sb-head">
+            <div className="sb-brand">
+              <div className="sb-logo">
+                <span>F</span>
+              </div>
+              {sidebarOpen && (
+                <div>
+                  <div className="sb-name">Formalizações</div>
+                  <div className="sb-sub">MESP · Painel de Controle</div>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-
-        <div className="sb-body">
-          <div className="sb-sec"><Filter size={10} /> Filtros</div>
-
-          {[
-            { lbl: 'Nº Proposta',    key: 'proposta',   placeholder: 'Ex.: 024721/2025' },
-            { lbl: 'Nº do Processo', key: 'processo',   placeholder: 'Digite o processo' },
-            { lbl: 'Proponente',     key: 'proponente', placeholder: 'Digite o proponente' },
-          ].map(({ lbl, key, placeholder }) => (
-            <div className="fld" key={key}>
-              <label className="fld-l">{lbl}</label>
-              <input type="text" className="fld-i" placeholder={placeholder}
-                value={filters[key]}
-                onChange={e => setFilters(p => ({ ...p, [key]: e.target.value }))} />
-            </div>
-          ))}
-
-          <div className="fld">
-            <label className="fld-l">Modalidade</label>
-            <div className="sel-w">
-              <select className="fld-s" value={filters.modalidade}
-                onChange={e => setFilters(p => ({ ...p, modalidade: e.target.value }))}>
-                <option>Todas</option>
-                <option value="CONVÊNIO">Convênio</option>
-                <option value="TERMO DE FOMENTO">Termo de Fomento</option>
-                <option value="TERMO DE EXECUÇÃO DESCENTRALIZADA">Termo de Exec. Descentralizada</option>
-              </select>
-            </div>
+            <button className="sb-toggle-btn" onClick={() => setSidebarOpen(p => !p)}>
+              {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            </button>
           </div>
 
-          <div className="fld">
-            <label className="fld-l">Situação de Contratação</label>
-            <div className="sel-w">
-              <select className="fld-s" value={filters.situacao}
-                onChange={e => setFilters(p => ({ ...p, situacao: e.target.value }))}>
-                <option>Todas</option>
-                <option value="PENDENTE">Pendente</option>
-                <option value="REALIZADO">Realizado</option>
-                <option value="NÃO SE APLICA">Não Se Aplica</option>
-              </select>
-            </div>
-          </div>
+          {sidebarOpen && (
+            <>
+              {/* mini KPIs */}
+              <div className="sb-kpis">
+                <div className="sb-kpi">
+                  <span className="sk-v">{stats.total.toLocaleString('pt-BR')}</span>
+                  <span className="sk-l">Total</span>
+                </div>
+                <div className="sb-kpi warn">
+                  <span className="sk-v">{stats.pendentes}</span>
+                  <span className="sk-l">Pendentes</span>
+                </div>
+                <div className="sb-kpi ok">
+                  <span className="sk-v">{stats.realizados}</span>
+                  <span className="sk-l">Realizados</span>
+                </div>
+              </div>
 
-          <div className="fld">
-            <label className="fld-l">Empenhado</label>
-            <div className="sel-w">
-              <select className="fld-s" value={filters.empenhado}
-                onChange={e => setFilters(p => ({ ...p, empenhado: e.target.value }))}>
-                <option>Todos</option>
-                <option value="Sim">Sim</option>
-                <option value="Não">Não</option>
-              </select>
-            </div>
-          </div>
+              {/* tab pills */}
+              <div className="sb-tabs">
+                {[
+                  { id: 'filters', icon: <Filter size={11} />, label: 'Filtros' },
+                  { id: 'empty',   icon: <AlertOctagon size={11} />, label: 'Dados Vazios' },
+                  { id: 'columns', icon: <Columns size={11} />, label: 'Colunas' },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    className={`sb-tab${activeTab === t.id ? ' active' : ''}`}
+                    onClick={() => setActiveTab(t.id)}
+                  >
+                    {t.icon}{t.label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="fld">
-            <label className="fld-l">Publicação</label>
-            <div className="sel-w">
-              <select className="fld-s" value={filters.publicacao}
-                onChange={e => setFilters(p => ({ ...p, publicacao: e.target.value }))}>
-                <option>Todas</option>
-                <option value="SIM">Sim</option>
-                <option value="NÃO">Não</option>
-              </select>
-            </div>
-          </div>
+              <div className="sb-body">
 
-          <div className="fld">
-            <label className="fld-l">Técnico</label>
-            <div className="sel-w">
-              <select className="fld-s" value={filters.tecnico}
-                onChange={e => setFilters(p => ({ ...p, tecnico: e.target.value }))}>
-                <option>Todos</option>
-                {SELECT_OPTIONS['TÉCNICO DE FORMALIZAÇÃO'].map(t =>
-                  <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
+                {/* ── TAB: FILTERS ── */}
+                {activeTab === 'filters' && (
+                  <>
+                    {[
+                      { label: 'Nº Proposta', key: 'proposta', ph: '024721/2025' },
+                      { label: 'Processo',    key: 'processo', ph: 'Nº do processo' },
+                      { label: 'Entidade',    key: 'entidade', ph: 'Nome da entidade' },
+                    ].map(({ label, key, ph }) => (
+                      <div className="ff" key={key}>
+                        <label className="fl">{label}</label>
+                        <input className="fi" placeholder={ph} value={filters[key]}
+                          onChange={e => setFilters(p => ({ ...p, [key]: e.target.value }))} />
+                      </div>
+                    ))}
 
-        <div className="sb-foot">
-          <button className="btn-clear" onClick={() => {
-            setFilters({ proposta:'',modalidade:'Todas',situacao:'Todas',empenhado:'Todos',publicacao:'Todas',processo:'',proponente:'',tecnico:'Todos' });
-            setGlobalFilter('');
-          }}>Limpar Filtros</button>
-        </div>
-      </aside>
+                    {/* Ano */}
+                    <div className="ff">
+                      <label className="fl"><Calendar size={9} /> Ano</label>
+                      <div className="year-pills">
+                        {ANOS.map(a => (
+                          <button
+                            key={a}
+                            className={`year-pill${filters.ano === a ? ' active' : ''}`}
+                            onClick={() => setFilters(p => ({ ...p, ano: a }))}
+                          >{a}</button>
+                        ))}
+                      </div>
+                    </div>
 
-      {/* MAIN */}
-      <main className="main">
+                    {/* Por ano breakdown */}
+                    {Object.keys(stats.byYear).length > 0 && (
+                      <div className="year-breakdown">
+                        {Object.entries(stats.byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([yr, cnt]) => (
+                          <div key={yr} className="yr-row">
+                            <span className="yr-label">{yr}</span>
+                            <div className="yr-bar-wrap">
+                              <div className="yr-bar" style={{ width: `${(cnt / stats.total) * 100}%` }} />
+                            </div>
+                            <span className="yr-count">{cnt}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
-        {/* KPI */}
-        <div className="kpi-row">
-          <div className="kpi bl">
-            <div className="kpi-v">{stats.total.toLocaleString('pt-BR')}</div>
-            <div className="kpi-l">Total de Propostas</div>
-          </div>
-          <div className="kpi gr">
-            <div className="kpi-v">{stats.termoFomento}</div>
-            <div className="kpi-l">Termo de Fomento</div>
-          </div>
-          <div className="kpi am">
-            <div className="kpi-v">{stats.convenio}</div>
-            <div className="kpi-l">Convênio</div>
-          </div>
-          <div className="kpi re">
-            <div className="kpi-v">
-              {stats.valorTotal.toLocaleString('pt-BR', { notation: 'compact', style: 'currency', currency: 'BRL' })}
-            </div>
-            <div className="kpi-l">Valor em Repasse</div>
-          </div>
-        </div>
+                    {[
+                      { label: 'Instrumento', key: 'instrumento', opts: ['Todos','CONVÊNIO','TERMO DE FOMENTO','TERMO DE EXECUÇÃO DESCENTRALIZADA'] },
+                      { label: 'Ajuste',      key: 'ajuste',      opts: ['Todos','PENDENTE','REALIZADO','NÃO SE APLICA'] },
+                      { label: 'Empenho',     key: 'empenho',     opts: ['Todos','SIM','NÃO'] },
+                      { label: 'Técnico',     key: 'tecnico',     opts: ['Todos', ...SELECT_OPTIONS['TÉCNICO DE FORMALIZAÇÃO']] },
+                      { label: 'UF',          key: 'uf',          opts: ['Todos','AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] },
+                    ].map(({ label, key, opts }) => (
+                      <div className="ff" key={key}>
+                        <label className="fl">{label}</label>
+                        <select className="fs" value={filters[key]}
+                          onChange={e => setFilters(p => ({ ...p, [key]: e.target.value }))}>
+                          {opts.map(o => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </>
+                )}
 
-        {/* TABLE */}
-        <div className="tcard">
+                {/* ── TAB: EMPTY DATA ── */}
+                {activeTab === 'empty' && (
+                  <div className="empty-tab">
+                    <p className="empty-tab-hint">
+                      Filtre registros com campos <strong>vazios</strong> ou <strong>preenchidos</strong> por coluna.
+                    </p>
+                    {allEditableCols.slice(0,30).map(col => {
+                      const emptyCount  = stats.emptyStats[col] || 0;
+                      const pct         = stats.total > 0 ? Math.round((emptyCount / stats.total) * 100) : 0;
+                      const isEmptyFlt  = filters.emptyCols.includes(col);
+                      const isFilledFlt = filters.filledCols.includes(col);
+                      return (
+                        <div key={col} className={`ec-row${isEmptyFlt ? ' ec-empty' : ''}${isFilledFlt ? ' ec-filled' : ''}`}>
+                          <div className="ec-info">
+                            <span className="ec-name" title={col}>{col}</span>
+                            <span className="ec-stat">
+                              {emptyCount > 0
+                                ? <span className="ec-empty-cnt">{emptyCount} vazio{emptyCount !== 1 ? 's' : ''} ({pct}%)</span>
+                                : <span className="ec-full-cnt">Completo ✓</span>
+                              }
+                            </span>
+                            <div className="ec-bar-wrap">
+                              <div className="ec-bar-fill" style={{ width: `${100 - pct}%` }} />
+                            </div>
+                          </div>
+                          <div className="ec-btns">
+                            <button
+                              className={`ec-btn${isEmptyFlt ? ' active-empty' : ''}`}
+                              onClick={() => toggleEmptyCol(col)}
+                              title="Mostrar apenas vazios"
+                            >∅</button>
+                            <button
+                              className={`ec-btn${isFilledFlt ? ' active-filled' : ''}`}
+                              onClick={() => toggleFilledCol(col)}
+                              title="Mostrar apenas preenchidos"
+                            >✓</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-          {/* Toolbar */}
-          <div className="tbar">
-            <div className="tbar-l">
-              <button className="ibtn" onClick={() => navigate('/')} title="Voltar">
-                <ChevronLeft size={14} />
-              </button>
-              <span className="tbar-title">Propostas</span>
-              <span className="tbar-cnt">{totalFiltered.toLocaleString('pt-BR')} registros</span>
-            </div>
-            <div className="tbar-r">
-              <span className="lbl-flt">FILTRO POR PALAVRAS</span>
-              <div className="sw">
-                <Search size={13} />
-                <input className="sw-i" placeholder="Buscar em qualquer coluna..."
-                  value={globalFilter}
-                  onChange={e => setGlobalFilter(e.target.value)} />
-                {globalFilter && (
-                  <button className="sw-x" onClick={() => setGlobalFilter('')}><X size={11} /></button>
+                {/* ── TAB: COLUMNS ── */}
+                {activeTab === 'columns' && (
+                  <div className="col-tab">
+                    <p className="empty-tab-hint">Mostrar ou ocultar colunas na tabela.</p>
+                    {allEditableCols
+                      .filter(k => !['PROPOSTA','INSTRUMENTO','VALOR REPASSE'].includes(k))
+                      .map(col => (
+                        <div key={col} className="col-row">
+                          <span className="col-name" title={col}>{col}</span>
+                          <button
+                            className={`toggle-col${colVisibility[col] === false ? ' hidden' : ' visible'}`}
+                            onClick={() => setColVisibility(p => ({ ...p, [col]: p[col] === false ? true : false }))}
+                          >
+                            {colVisibility[col] === false ? <EyeOff size={11} /> : <Eye size={11} />}
+                          </button>
+                        </div>
+                      ))}
+                  </div>
                 )}
               </div>
-              <div className="vdiv" />
-              <button className="ibtn" onClick={fetchAllData} title="Atualizar"><RefreshCw size={14} /></button>
-              <button className="ibtn g" onClick={exportToExcel} title="Exportar Excel"><Download size={14} /></button>
 
-              {selectedRows.size > 0 && (
-                <button className="btn-del-sel"
-                  onClick={() => setDelModal({ open: true, single: null })}>
-                  <Trash2 size={13} /> Excluir ({selectedRows.size})
-                </button>
-              )}
-
-              {Object.keys(editedCells).length > 0 && (
-                <button className="btn-save" onClick={handleSave} disabled={saving}>
-                  {saving
-                    ? <Loader2 size={13} style={{ animation: 'rot .65s linear infinite' }} />
-                    : <Save size={13} />}
-                  Salvar ({Object.keys(editedCells).length})
-                </button>
-              )}
-
-              <div className="vdiv" />
-              <button className="btn-pri"
-                onClick={() => { setNewModal(true); setNewTab('manual'); setNewProposta(''); setExcelFile(null); setExcelError(''); }}>
-                <Plus size={13} /> Novo Registro
-              </button>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="tscroll">
-            <table>
-              <thead>
-                <tr>
-                  {table.getHeaderGroups()[0]?.headers.map(header => {
-                    const key = header.column.columnDef.accessorKey;
-                    const isRobo  = ROBO_COLS.includes(key);
-                    const isAudit = header.column.id === 'auditoria';
-                    return (
-                      <th key={header.id}
-                        className={[
-                          header.column.getCanSort() ? 's' : '',
-                          isRobo  ? 'robo'  : '',
-                          isAudit ? 'audit' : '',
-                        ].join(' ').trim()}
-                        style={{ width: header.column.columnDef.size }}
-                        onClick={header.column.getToggleSortingHandler()}>
-                        <div className="th-in">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getIsSorted() === 'asc'  && <span className="si">▲</span>}
-                          {header.column.getIsSorted() === 'desc' && <span className="si">▼</span>}
-                          {!header.column.getIsSorted() && header.column.getCanSort() && <span className="si">⇅</span>}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map(row => (
-                  <tr key={row.id} className={selectedRows.has(row.original.id) ? 'sel' : ''}>
-                    {row.getVisibleCells().map(cell => (
-                      <td key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-                {table.getRowModel().rows.length === 0 && (
-                  <tr><td colSpan={columns.length}
-                    style={{ textAlign: 'center', padding: '48px 0', color: '#94A3B8', fontSize: 13 }}>
-                    Nenhum registro encontrado para os filtros aplicados.
-                  </td></tr>
+              <div className="sb-foot">
+                {hasFilters && (
+                  <button className="clear-btn" onClick={clearFilters}>
+                    <X size={11} />Limpar Filtros
+                  </button>
                 )}
-              </tbody>
-            </table>
+                <div className="sb-count">
+                  {totalFiltered.toLocaleString('pt-BR')} / {stats.total.toLocaleString('pt-BR')} registros
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+
+        {/* ─── MAIN ─── */}
+        <main className="main">
+
+          {/* KPI bar */}
+          <div className="kpi-bar">
+            <div className="kpi-card blue">
+              <div className="kc-icon"><BarChart2 size={16} /></div>
+              <div>
+                <div className="kc-val">{stats.total.toLocaleString('pt-BR')}</div>
+                <div className="kc-lbl">Total de Propostas</div>
+              </div>
+            </div>
+            <div className="kpi-card amber">
+              <div className="kc-icon"><AlertTriangle size={16} /></div>
+              <div>
+                <div className="kc-val">{stats.pendentes}</div>
+                <div className="kc-lbl">Ajustes Pendentes</div>
+                <div className="kc-sub">{stats.total > 0 ? ((stats.pendentes/stats.total)*100).toFixed(1) : 0}% do total</div>
+              </div>
+            </div>
+            <div className="kpi-card green">
+              <div className="kc-icon"><CheckCircle2 size={16} /></div>
+              <div>
+                <div className="kc-val">{stats.realizados}</div>
+                <div className="kc-lbl">Ajustes Realizados</div>
+                <div className="kc-sub">{stats.total > 0 ? ((stats.realizados/stats.total)*100).toFixed(1) : 0}% do total</div>
+              </div>
+            </div>
+            <div className="kpi-card indigo">
+              <div className="kc-icon"><TrendingUp size={16} /></div>
+              <div>
+                <div className="kc-val">{stats.valorTotal.toLocaleString('pt-BR', { notation:'compact', style:'currency', currency:'BRL', maximumFractionDigits:1 })}</div>
+                <div className="kc-lbl">Valor Total em Repasse</div>
+              </div>
+            </div>
           </div>
 
-          {/* Footer */}
-          <div className="tfoot">
-            <div className="pg-info">
-              Exibindo{' '}
-              <b>{pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, totalFiltered)}</b>
-              {' '}de <b>{totalFiltered.toLocaleString('pt-BR')}</b> filtrado(s).
-              Total geral: <b>{stats.total.toLocaleString('pt-BR')}</b>.
-            </div>
-            <div className="pg-ctrl">
-              <span className="pg-lbl">Linhas por página</span>
-              <select className="pg-size" value={pageSize}
-                onChange={e => table.setPageSize(Number(e.target.value))}>
-                {[10,25,50,100].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <button className="pg-btn" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-                <ChevronLeft size={12} /> Anterior
-              </button>
-              <span className="pg-cur">Página {pageIndex + 1} de {pageCount}</span>
-              <button className="pg-btn" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                Próxima <ChevronRight size={12} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
+          {/* Table card */}
+          <div className="tcard">
 
-    {/* MODAL — excluir único */}
-    {delModal.open && delModal.single && (
-      <div className="overlay">
-        <div className="modal modal-sm">
-          <div className="m-ico red"><AlertTriangle size={24} /></div>
-          <h2>Excluir Registro?</h2>
-          <p className="m-desc">
-            Você está prestes a remover a proposta{' '}
-            <b>{delModal.single?.PROPOSTA}</b> permanentemente. Esta ação é irreversível.
-          </p>
-          <div className="m-acts">
-            <button className="act-cancel" onClick={() => setDelModal({ open: false, single: null })}>Cancelar</button>
-            <button className="act-del" onClick={handleDeleteSingle}>Sim, Excluir</button>
-          </div>
-        </div>
-      </div>
-    )}
+            {/* Toolbar */}
+            <div className="toolbar">
+              <div className="tl-left">
+                <h2 className="tcard-title">Registro de Formalizações</h2>
+                <span className="count-chip">{totalFiltered.toLocaleString('pt-BR')} registros</span>
+                {hasFilters && <span className="filter-chip"><Filter size={9} />Filtros ativos</span>}
+                {dirtyCount > 0 && (
+                  <span className="dirty-chip">
+                    <Edit3 size={10} />{dirtyCount} não salva(s)
+                  </span>
+                )}
+              </div>
+              <div className="tl-right">
+                <div className="search-box">
+                  <Search size={12} className="search-icon" />
+                  <input
+                    className="search-in"
+                    placeholder="Buscar em todos os campos..."
+                    value={globalFilter}
+                    onChange={e => setGlobalFilter(e.target.value)}
+                  />
+                  {globalFilter && (
+                    <button className="search-x" onClick={() => setGlobalFilter('')}><X size={10} /></button>
+                  )}
+                </div>
 
-    {/* MODAL — excluir selecionados */}
-    {delModal.open && !delModal.single && (
-      <div className="overlay">
-        <div className="modal modal-sm">
-          <div className="m-ico red"><AlertTriangle size={24} /></div>
-          <h2>Excluir {selectedRows.size} Registro(s)?</h2>
-          <p className="m-desc">
-            Os <b>{selectedRows.size} registros selecionados</b> serão removidos
-            permanentemente. Esta ação é irreversível.
-          </p>
-          <div className="m-acts">
-            <button className="act-cancel" onClick={() => setDelModal({ open: false, single: null })}>Cancelar</button>
-            <button className="act-del" onClick={handleDeleteSelected}>Sim, Excluir Todos</button>
-          </div>
-        </div>
-      </div>
-    )}
+                <button className="icon-btn" onClick={fetchAllData} title="Atualizar">
+                  <RefreshCw size={13} />
+                </button>
+                <button className="icon-btn" onClick={exportToExcel} title="Exportar Excel">
+                  <Download size={13} />
+                </button>
 
-    {/* MODAL — novo registro */}
-    {newModal && (
-      <div className="overlay">
-        <div className="modal modal-lg">
-          <div className="m-ico blue"><Plus size={24} /></div>
-          <h2>Novo Registro</h2>
-          <p className="m-desc" style={{ marginBottom: 14 }}>
-            Adicione propostas manualmente ou via Excel. O robô preencherá os demais dados automaticamente.
-          </p>
+                {selectedRows.size > 0 && (
+                  <button className="btn btn-outline-red" onClick={() => setConfirmModal({
+                    type: 'delete-many',
+                    title: `Excluir ${selectedRows.size} Registro(s)`,
+                    message: <>Excluir permanentemente <strong>{selectedRows.size} registros</strong>?</>,
+                    confirmLabel: `Excluir ${selectedRows.size}`,
+                    confirmClass: 'btn-danger',
+                  })}>
+                    <Trash2 size={12} />Excluir ({selectedRows.size})
+                  </button>
+                )}
 
-          <div className="tabs">
-            <button className={`tab${newTab === 'manual' ? ' on' : ''}`} onClick={() => setNewTab('manual')}>
-              <Hash size={13} /> Inserir Manualmente
-            </button>
-            <button className={`tab${newTab === 'excel' ? ' on' : ''}`} onClick={() => setNewTab('excel')}>
-              <FileSpreadsheet size={13} /> Importar Excel
-            </button>
-          </div>
+                {dirtyCount > 0 && (
+                  <button className="btn btn-save" onClick={handleSave} disabled={saving}>
+                    {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}
+                    Salvar ({dirtyCount})
+                  </button>
+                )}
 
-          {newTab === 'manual' && <>
-            <div className="notice sky">
-              <Bot size={15} />
-              <span>
-                Informe apenas o <b>número da proposta</b> (ex.: <b>024721/2025</b>).
-                O robô preencherá automaticamente: Instrumento, Publicação, Proponente, Processo e demais dados do TransfereGov.
-              </span>
-            </div>
-            <div className="mfld">
-              <label className="mfld-l">Número da Proposta</label>
-              <input className="mfld-i" placeholder="Ex.: 024721/2025"
-                value={newProposta}
-                onChange={e => setNewProposta(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleNewManual()} />
-            </div>
-            <div className="m-acts">
-              <button className="act-cancel" onClick={() => setNewModal(false)}>Cancelar</button>
-              <button className="act-ok" disabled={!newProposta.trim()} onClick={handleNewManual}>
-                Criar Registro
-              </button>
-            </div>
-          </>}
-
-          {newTab === 'excel' && <>
-            <div className="notice green">
-              <FileSpreadsheet size={15} />
-              <span>
-                Faça upload de um <b>.xlsx</b> ou <b>.xls</b>. Certifique-se de que existe
-                uma coluna cujo nome contenha a palavra <b>"PROPOSTA"</b> — ela será
-                usada para importar os registros. O robô preencherá os demais campos.
-              </span>
+                <button className="btn btn-primary" onClick={() => {
+                  setNewModal(true); setNewTab('manual');
+                  setNewProposta(''); setExcelFile(null); setExcelError('');
+                }}>
+                  <Plus size={13} />Nova Proposta
+                </button>
+              </div>
             </div>
 
-            <div
-              className={`dz${dragover ? ' over' : ''}`}
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); setDragover(true); }}
-              onDragLeave={() => setDragover(false)}
-              onDrop={e => { e.preventDefault(); setDragover(false); const f = e.dataTransfer.files[0]; if (f) processExcel(f); }}>
-              <Upload size={26} className="dz-ic" />
-              <div className="dz-t">{excelFile ? excelFile.name : 'Clique ou arraste o arquivo aqui'}</div>
-              <div className="dz-s">.xlsx, .xls</div>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
-                onChange={e => { if (e.target.files[0]) processExcel(e.target.files[0]); }} />
-            </div>
-
-            {excelError && (
-              <div style={{ fontSize:12,color:'var(--red)',marginBottom:12,padding:'8px 12px',background:'var(--red-lt)',borderRadius:7 }}>
-                ⚠ {excelError}
+            {/* Active filter badges */}
+            {(filters.emptyCols.length > 0 || filters.filledCols.length > 0 || filters.ano !== 'Todos') && (
+              <div className="active-filters">
+                {filters.ano !== 'Todos' && (
+                  <span className="af-pill blue">
+                    Ano: {filters.ano}
+                    <button onClick={() => setFilters(p => ({ ...p, ano: 'Todos' }))}><X size={9} /></button>
+                  </span>
+                )}
+                {filters.emptyCols.map(col => (
+                  <span key={col} className="af-pill amber">
+                    ∅ {col}
+                    <button onClick={() => toggleEmptyCol(col)}><X size={9} /></button>
+                  </span>
+                ))}
+                {filters.filledCols.map(col => (
+                  <span key={col} className="af-pill green">
+                    ✓ {col}
+                    <button onClick={() => toggleFilledCol(col)}><X size={9} /></button>
+                  </span>
+                ))}
               </div>
             )}
 
-            {excelFile && !excelError && <>
-              <div style={{ fontSize:12,color:'var(--text2)',marginBottom:8,fontWeight:600 }}>
-                Coluna detectada: <span style={{ color:'var(--blue)' }}>{excelFile.col}</span>
-                {' '}— <b style={{ color:'var(--text)' }}>{excelFile.rows.length}</b> proposta(s) encontrada(s)
-              </div>
-              <div className="prev-wrap">
-                <table className="prev-t">
-                  <thead><tr><th>#</th><th>PROPOSTA</th></tr></thead>
-                  <tbody>
-                    {excelFile.rows.slice(0, 8).map((r, i) => (
-                      <tr key={i}><td>{i + 1}</td><td>{String(r[excelFile.col])}</td></tr>
-                    ))}
-                    {excelFile.rows.length > 8 && (
-                      <tr><td colSpan={2} style={{ textAlign:'center',color:'var(--text3)',fontStyle:'italic' }}>
-                        + {excelFile.rows.length - 8} mais…
-                      </td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>}
+            {/* Table */}
+            <div className="tscroll">
+              <table>
+                <thead>
+                  <tr>
+                    {table.getHeaderGroups()[0]?.headers.map(h => {
+                      const key   = h.column.columnDef.accessorKey;
+                      const isBot = ROBO_COLS.includes(key);
+                      const isAud = h.column.id === 'audit';
+                      return (
+                        <th key={h.id}
+                          className={[h.column.getCanSort() ? 'sortable' : '', isBot ? 'th-bot' : '', isAud ? 'th-aud' : ''].filter(Boolean).join(' ')}
+                          style={{ width: h.column.columnDef.size, minWidth: h.column.columnDef.size }}
+                          onClick={h.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(h.column.columnDef.header, h.getContext())}
+                          {h.column.getCanSort() && (
+                            <span className="sort-icon">
+                              {h.column.getIsSorted() === 'asc' ? <ChevronUp size={9} /> :
+                               h.column.getIsSorted() === 'desc' ? <ChevronDown size={9} /> :
+                               <span style={{ opacity: .25 }}>⇅</span>}
+                            </span>
+                          )}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {table.getRowModel().rows.map((row, i) => (
+                    <tr key={row.id}
+                      className={[
+                        selectedRows.has(row.original.id) ? 'row-sel' : '',
+                        i % 2 !== 0 ? 'row-stripe' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      {row.getVisibleCells().map(cell => (
+                        <td key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {table.getRowModel().rows.length === 0 && (
+                    <tr>
+                      <td colSpan={columns.length} className="no-data">
+                        <div className="no-data-icon">🔎</div>
+                        <div className="no-data-title">Nenhum registro encontrado</div>
+                        <div className="no-data-sub">Ajuste os filtros ou a busca.</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-            <div className="m-acts">
-              <button className="act-cancel" onClick={() => setNewModal(false)}>Cancelar</button>
-              <button className="act-ok" disabled={!excelFile || !!excelError} onClick={handleNewExcel}>
-                Importar {excelFile ? `(${excelFile.rows.length})` : ''} Propostas
+            {/* Pagination */}
+            <div className="tfoot">
+              <div className="page-info">
+                <strong>{pageIndex * pageSize + 1}</strong>–<strong>{Math.min((pageIndex + 1) * pageSize, totalFiltered)}</strong> de <strong>{totalFiltered.toLocaleString('pt-BR')}</strong>
+              </div>
+              <div className="page-ctrl">
+                <label className="pg-lbl">Linhas</label>
+                <select className="pg-sel" value={pageSize}
+                  onChange={e => table.setPageSize(Number(e.target.value))}>
+                  {[10,15,20,25,50,100].map(s => <option key={s}>{s}</option>)}
+                </select>
+                <button className="pg-btn" onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>«</button>
+                <button className="pg-btn" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}><ChevronLeft size={12} /></button>
+                <span className="pg-cur">Pág. {pageIndex + 1} / {pageCount || 1}</span>
+                <button className="pg-btn" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}><ChevronRight size={12} /></button>
+                <button className="pg-btn" onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>»</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* ─── CONFIRM MODAL ─── */}
+      {confirmModal && (
+        <div className="overlay" onClick={e => e.target === e.currentTarget && setConfirmModal(null)}>
+          <div className="modal">
+            <div className={`modal-ico ${confirmModal.confirmClass === 'btn-danger' ? 'red' : 'blue'}`}>
+              {confirmModal.confirmClass === 'btn-danger' ? <AlertTriangle size={20} /> : <Info size={20} />}
+            </div>
+            <h3 className="modal-title">{confirmModal.title}</h3>
+            <p className="modal-desc">{confirmModal.message}</p>
+            <div className="modal-acts">
+              <button className="btn btn-ghost" onClick={() => setConfirmModal(null)}>Cancelar</button>
+              <button className={`btn ${confirmModal.confirmClass}`} onClick={handleConfirm}>
+                {confirmModal.confirmLabel}
               </button>
             </div>
-          </>}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
-    {/* TOAST */}
-    {message && (
-      <div className={`toast ${message.type}`}>
-        {message.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-        {message.text}
-      </div>
-    )}
+      {/* ─── NEW RECORD MODAL ─── */}
+      {newModal && (
+        <div className="overlay" onClick={e => e.target === e.currentTarget && setNewModal(false)}>
+          <div className="modal modal-lg">
+            <h3 className="modal-title">Nova Proposta</h3>
+            <p className="modal-desc">Insira manualmente ou importe via Excel.</p>
+            <div className="modal-tabs">
+              {[
+                { id: 'manual', icon: <Hash size={11} />, label: 'Manual' },
+                { id: 'excel',  icon: <FileSpreadsheet size={11} />, label: 'Importar Excel' },
+              ].map(t => (
+                <button key={t.id} className={`mtab${newTab === t.id ? ' active' : ''}`}
+                  onClick={() => setNewTab(t.id)}>
+                  {t.icon}{t.label}
+                </button>
+              ))}
+            </div>
+
+            {newTab === 'manual' && (
+              <>
+                <div className="notice info">
+                  <Bot size={14} />
+                  <span>Informe o número da proposta (ex: <strong>024721/2025</strong>). Os demais campos serão preenchidos depois.</span>
+                </div>
+                <div className="form-field">
+                  <label className="form-lbl">Número da Proposta *</label>
+                  <input className="form-in" placeholder="024721/2025"
+                    value={newProposta} autoFocus
+                    onChange={e => setNewProposta(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleNewManual()} />
+                </div>
+                <div className="modal-acts">
+                  <button className="btn btn-ghost" onClick={() => setNewModal(false)}>Cancelar</button>
+                  <button className="btn btn-primary" disabled={!newProposta.trim()} onClick={handleNewManual}>
+                    <Plus size={12} />Criar
+                  </button>
+                </div>
+              </>
+            )}
+
+            {newTab === 'excel' && (
+              <>
+                <div className="notice success">
+                  <FileSpreadsheet size={14} />
+                  <span>Upload de <strong>.xlsx</strong> com coluna <strong>PROPOSTA</strong>.</span>
+                </div>
+                <div
+                  className={`dropzone${dragover ? ' dz-over' : ''}`}
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setDragover(true); }}
+                  onDragLeave={() => setDragover(false)}
+                  onDrop={e => { e.preventDefault(); setDragover(false); const f = e.dataTransfer.files[0]; if (f) processExcel(f); }}
+                >
+                  <Upload size={26} className="dz-ico" />
+                  <div className="dz-t">{excelFile ? excelFile.name : 'Clique ou arraste o arquivo aqui'}</div>
+                  <div className="dz-s">.xlsx · .xls</div>
+                  <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+                    onChange={e => { if (e.target.files[0]) processExcel(e.target.files[0]); }} />
+                </div>
+                {excelError && <div className="notice danger">{excelError}</div>}
+                {excelFile && !excelError && (
+                  <div className="preview">
+                    <div className="preview-meta">Coluna: <strong>{excelFile.col}</strong> · <strong>{excelFile.rows.length}</strong> proposta(s)</div>
+                    <div className="preview-scroll">
+                      <table className="preview-table">
+                        <thead><tr><th>#</th><th>PROPOSTA</th></tr></thead>
+                        <tbody>
+                          {excelFile.rows.slice(0,6).map((r, i) => (
+                            <tr key={i}><td>{i+1}</td><td>{String(r[excelFile.col])}</td></tr>
+                          ))}
+                          {excelFile.rows.length > 6 && (
+                            <tr><td colSpan={2} className="prev-more">+{excelFile.rows.length - 6} mais…</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                <div className="modal-acts">
+                  <button className="btn btn-ghost" onClick={() => setNewModal(false)}>Cancelar</button>
+                  <button className="btn btn-primary" disabled={!excelFile || !!excelError} onClick={handleNewExcel}>
+                    <Upload size={12} />Importar {excelFile ? `(${excelFile.rows.length})` : ''}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── TOAST ─── */}
+      {message && (
+        <div className={`toast t-${message.type}`}>
+          {message.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          {message.text}
+        </div>
+      )}
     </>
   );
 }
+
+// ─── CSS ─────────────────────────────────────────────────────────────────────
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:       #F2F4F8;
+  --surface:  #FFFFFF;
+  --surface2: #F7F8FC;
+  --border:   #E3E7EF;
+  --border2:  #CDD3DF;
+
+  --blue:     #1A56DB;
+  --blue-lt:  #EFF4FF;
+  --blue-md:  #C3D4F8;
+  --blue-dk:  #1447C5;
+
+  --green:    #057A55;
+  --green-lt: #ECFDF5;
+  --green-md: #A7F3D0;
+
+  --amber:    #B45309;
+  --amber-lt: #FFFBEB;
+  --amber-md: #FDE68A;
+
+  --red:      #C81E1E;
+  --red-lt:   #FEF2F2;
+  --red-md:   #FECACA;
+
+  --indigo:   #5145CD;
+  --indigo-lt:#EEF2FF;
+  --indigo-md:#C7D2FE;
+
+  --sky:      #0369A1;
+  --sky-lt:   #F0F9FF;
+  --sky-bd:   #BAE6FD;
+
+  --c1:  #0D1117;
+  --c2:  #374151;
+  --c3:  #6B7280;
+  --c4:  #9CA3AF;
+  --c5:  #D1D5DB;
+
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 14px;
+  --sh-sm: 0 1px 3px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.04);
+  --sh:    0 4px 16px rgba(0,0,0,.07);
+  --sh-lg: 0 16px 48px rgba(0,0,0,.15);
+}
+
+html,body,#root{font-family:var(--font);background:var(--bg);height:100vh;overflow:hidden;color:var(--c1);}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
+
+/* ── LAYOUT ── */
+.app{display:flex;height:100vh;overflow:hidden;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;padding:16px;gap:12px;}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:272px;flex-shrink:0;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:width .2s ease;
+}
+.sidebar.sb-collapsed{width:52px;}
+
+.sb-head{
+  padding:14px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.sb-brand{display:flex;align-items:center;gap:10px;}
+.sb-logo{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,#1A56DB 0%,#5145CD 100%);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.sb-logo span{color:#fff;font-weight:700;font-size:16px;letter-spacing:-.02em;}
+.sb-name{font-size:13px;font-weight:700;color:var(--c1);}
+.sb-sub{font-size:10px;color:var(--c4);margin-top:1px;}
+.sb-toggle-btn{
+  width:28px;height:28px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface2);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--c4);transition:all .12s;flex-shrink:0;
+}
+.sb-toggle-btn:hover{background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
+
+.sb-kpis{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.sb-kpi{flex:1;padding:10px 8px;text-align:center;border-right:1px solid var(--border);}
+.sb-kpi:last-child{border-right:none;}
+.sk-v{display:block;font-size:17px;font-weight:700;color:var(--c1);}
+.sk-l{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--c4);margin-top:2px;}
+.sb-kpi.warn .sk-v{color:var(--amber);}
+.sb-kpi.ok .sk-v{color:var(--green);}
+
+.sb-tabs{
+  display:flex;gap:2px;padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;
+  background:var(--surface2);
+}
+.sb-tab{
+  flex:1;padding:6px 4px;
+  border:1px solid transparent;border-radius:var(--r-sm);
+  font-size:10px;font-weight:600;font-family:var(--font);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  color:var(--c3);background:transparent;transition:all .12s;
+}
+.sb-tab.active{background:var(--surface);color:var(--blue);border-color:var(--border);box-shadow:var(--sh-sm);}
+
+.sb-body{flex:1;overflow-y:auto;padding:10px;}
+
+/* filter fields */
+.ff{margin-bottom:8px;}
+.fl{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--c3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+.fi,.fs{
+  width:100%;padding:7px 10px;
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  background:var(--surface2);outline:none;
+  transition:border-color .12s,box-shadow .12s;
+}
+.fi:focus,.fs:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.fs{appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px;}
+
+/* year pills */
+.year-pills{display:flex;flex-wrap:wrap;gap:4px;}
+.year-pill{
+  padding:3px 10px;
+  border:1px solid var(--border);border-radius:20px;
+  font-size:11px;font-weight:600;font-family:var(--font);
+  cursor:pointer;background:var(--surface2);color:var(--c3);
+  transition:all .12s;
+}
+.year-pill.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+/* year breakdown bars */
+.year-breakdown{margin-bottom:8px;display:flex;flex-direction:column;gap:4px;}
+.yr-row{display:flex;align-items:center;gap:6px;}
+.yr-label{font-size:10px;font-weight:600;color:var(--c3);width:32px;flex-shrink:0;}
+.yr-bar-wrap{flex:1;height:6px;background:var(--border);border-radius:10px;overflow:hidden;}
+.yr-bar{height:100%;background:var(--blue);border-radius:10px;transition:width .4s ease;}
+.yr-count{font-size:10px;font-weight:600;color:var(--c2);width:28px;text-align:right;flex-shrink:0;}
+
+/* empty tab */
+.empty-tab-hint{font-size:11px;color:var(--c3);line-height:1.5;margin-bottom:8px;}
+.ec-row{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 8px;
+  border-radius:var(--r-sm);border:1px solid var(--border);
+  margin-bottom:4px;background:var(--surface2);
+  transition:border-color .12s,background .12s;
+}
+.ec-row.ec-empty{border-color:var(--amber);background:var(--amber-lt);}
+.ec-row.ec-filled{border-color:var(--green);background:var(--green-lt);}
+.ec-info{flex:1;min-width:0;}
+.ec-name{display:block;font-size:10px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ec-stat{display:block;font-size:9px;margin-top:1px;}
+.ec-empty-cnt{color:var(--amber);}
+.ec-full-cnt{color:var(--green);}
+.ec-bar-wrap{margin-top:3px;height:3px;background:var(--border);border-radius:4px;overflow:hidden;}
+.ec-bar-fill{height:100%;background:var(--green);border-radius:4px;}
+.ec-btns{display:flex;gap:3px;flex-shrink:0;}
+.ec-btn{
+  width:22px;height:22px;border-radius:5px;
+  border:1px solid var(--border);background:var(--surface);
+  font-size:11px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--c3);transition:all .12s;
+}
+.ec-btn.active-empty{background:var(--amber);color:#fff;border-color:var(--amber);}
+.ec-btn.active-filled{background:var(--green);color:#fff;border-color:var(--green);}
+
+/* col visibility tab */
+.col-tab{display:flex;flex-direction:column;gap:4px;}
+.col-row{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 8px;border-radius:var(--r-sm);
+  border:1px solid var(--border);background:var(--surface2);
+}
+.col-name{flex:1;font-size:10px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.toggle-col{
+  padding:3px 7px;border-radius:5px;
+  border:1px solid var(--border);background:var(--surface);
+  cursor:pointer;display:flex;align-items:center;gap:3px;
+  font-size:10px;color:var(--c3);transition:all .12s;
+}
+.toggle-col.visible{color:var(--blue);border-color:var(--blue-md);background:var(--blue-lt);}
+.toggle-col.hidden{color:var(--c4);border-color:var(--border);}
+
+.sb-foot{padding:8px 10px 12px;border-top:1px solid var(--border);flex-shrink:0;}
+.clear-btn{
+  width:100%;padding:8px;margin-bottom:6px;
+  background:var(--red-lt);color:var(--red);
+  border:1px solid var(--red-md);border-radius:var(--r-sm);
+  font-size:11px;font-weight:600;font-family:var(--font);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background .12s;
+}
+.clear-btn:hover{background:#FEE2E2;}
+.sb-count{font-size:10px;color:var(--c4);text-align:center;font-weight:500;}
+
+/* ── KPI BAR ── */
+.kpi-bar{display:flex;gap:12px;flex-shrink:0;}
+.kpi-card{
+  flex:1;min-width:0;
+  background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;
+  display:flex;align-items:center;gap:12px;
+  border-left:4px solid transparent;
+  box-shadow:var(--sh-sm);
+  transition:transform .14s,box-shadow .14s;
+}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:var(--sh);}
+.kpi-card.blue  {border-left-color:var(--blue);}
+.kpi-card.amber {border-left-color:var(--amber);}
+.kpi-card.green {border-left-color:var(--green);}
+.kpi-card.indigo{border-left-color:var(--indigo);}
+.kc-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.kpi-card.blue   .kc-icon{background:var(--blue-lt);color:var(--blue);}
+.kpi-card.amber  .kc-icon{background:var(--amber-lt);color:var(--amber);}
+.kpi-card.green  .kc-icon{background:var(--green-lt);color:var(--green);}
+.kpi-card.indigo .kc-icon{background:var(--indigo-lt);color:var(--indigo);}
+.kc-val{font-size:22px;font-weight:700;color:var(--c1);letter-spacing:-.03em;line-height:1;}
+.kc-lbl{font-size:11px;font-weight:600;color:var(--c3);margin-top:3px;}
+.kc-sub{font-size:10px;color:var(--c4);margin-top:2px;}
+
+/* ── TABLE CARD ── */
+.tcard{
+  flex:1;min-height:0;
+  background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r-lg);
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:var(--sh-sm);
+}
+
+/* ── TOOLBAR ── */
+.toolbar{
+  padding:11px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:8px;flex-shrink:0;background:var(--surface);
+}
+.tl-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tcard-title{font-size:14px;font-weight:700;color:var(--c1);letter-spacing:-.02em;}
+.count-chip{
+  font-size:11px;font-weight:600;
+  background:var(--blue-lt);color:var(--blue);
+  border:1px solid var(--blue-md);border-radius:20px;padding:2px 9px;
+}
+.filter-chip{
+  display:flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:600;
+  background:var(--indigo-lt);color:var(--indigo);
+  border:1px solid var(--indigo-md);border-radius:20px;padding:2px 9px;
+}
+.dirty-chip{
+  display:flex;align-items:center;gap:4px;
+  font-size:11px;font-weight:600;
+  background:var(--amber-lt);color:var(--amber);
+  border:1px solid var(--amber-md);border-radius:20px;padding:2px 9px;
+  animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+
+.tl-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+
+.search-box{position:relative;display:flex;align-items:center;}
+.search-icon{position:absolute;left:9px;color:var(--c4);pointer-events:none;}
+.search-in{
+  padding:7px 28px 7px 30px;
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  width:240px;outline:none;background:var(--surface2);
+  transition:border-color .12s,box-shadow .12s;
+}
+.search-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.08);background:#fff;}
+.search-in::placeholder{color:var(--c4);}
+.search-x{position:absolute;right:7px;background:none;border:none;cursor:pointer;color:var(--c4);display:flex;align-items:center;padding:2px;border-radius:4px;}
+.search-x:hover{color:var(--c1);}
+
+.icon-btn{
+  padding:7px;border:1px solid var(--border);border-radius:var(--r-sm);
+  background:var(--surface);cursor:pointer;color:var(--c2);
+  display:flex;align-items:center;transition:all .12s;
+}
+.icon-btn:hover{background:var(--surface2);border-color:var(--border2);}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 13px;border-radius:var(--r-sm);
+  font-size:12px;font-weight:600;font-family:var(--font);
+  cursor:pointer;border:1px solid transparent;
+  transition:all .12s;
+}
+.btn-primary{background:var(--blue);color:#fff;}
+.btn-primary:hover{background:var(--blue-dk);}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;}
+.btn-save{background:var(--green);color:#fff;border-color:var(--green);}
+.btn-save:hover{background:#046640;}
+.btn-save:disabled{opacity:.5;cursor:not-allowed;}
+.btn-danger{background:var(--red);color:#fff;}
+.btn-danger:hover{background:#A51B1B;}
+.btn-success{background:var(--green);color:#fff;}
+.btn-success:hover{background:#046640;}
+.btn-ghost{background:var(--surface2);color:var(--c2);border-color:var(--border);}
+.btn-ghost:hover{background:var(--border);}
+.btn-outline-red{background:var(--red-lt);color:var(--red);border-color:var(--red-md);}
+.btn-outline-red:hover{background:#FEE2E2;}
+
+/* active filter pills */
+.active-filters{
+  padding:6px 16px;border-bottom:1px solid var(--border);
+  display:flex;gap:5px;flex-wrap:wrap;background:var(--surface2);
+  flex-shrink:0;
+}
+.af-pill{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:600;
+  border-radius:20px;padding:2px 8px;
+  border:1px solid transparent;
+}
+.af-pill button{display:flex;align-items:center;border:none;background:none;cursor:pointer;opacity:.6;padding:0;}
+.af-pill button:hover{opacity:1;}
+.af-pill.blue  {background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
+.af-pill.amber {background:var(--amber-lt);color:var(--amber);border-color:var(--amber-md);}
+.af-pill.green {background:var(--green-lt);color:var(--green);border-color:var(--green-md);}
+
+/* ── TABLE ── */
+.tscroll{flex:1;overflow:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+
+thead th{
+  position:sticky;top:0;z-index:10;
+  background:var(--surface2);
+  padding:9px 12px;text-align:left;
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--c3);border-bottom:2px solid var(--border);
+  white-space:nowrap;user-select:none;
+}
+thead th.sortable{cursor:pointer;}
+thead th.sortable:hover{background:var(--blue-lt);color:var(--blue);}
+thead th.th-bot{color:var(--sky);background:var(--sky-lt);}
+thead th.th-bot:hover{background:#E0F2FE;}
+thead th.th-aud{color:#7C3AED;background:#F5F3FF;}
+.sort-icon{margin-left:3px;opacity:.5;vertical-align:middle;}
+.th-inner{display:flex;align-items:center;gap:5px;}
+.hdr-audit{display:flex;align-items:center;gap:5px;color:#7C3AED;}
+.robo-chip{
+  display:inline-flex;align-items:center;gap:2px;
+  font-size:8px;font-weight:700;
+  background:var(--sky-lt);color:var(--sky);
+  border:1px solid var(--sky-bd);border-radius:4px;padding:1px 4px;
+}
+
+tbody tr{border-bottom:1px solid #F1F5F9;transition:background .07s;}
+tbody tr:hover{background:#FAFBFE;}
+tbody tr.row-stripe{background:#FAFBFC;}
+tbody tr.row-sel{background:var(--blue-lt)!important;}
+tbody td{padding:7px 12px;vertical-align:middle;}
+
+/* ── CELL TYPES ── */
+.row-num{font-family:var(--mono);font-size:10px;color:var(--c4);}
+.inst-tag{
+  display:inline-flex;align-items:center;
+  padding:3px 9px;border-radius:20px;
+  font-size:10px;font-weight:700;white-space:nowrap;
+}
+.inst-tag.conv {background:var(--blue-lt);color:var(--blue);}
+.inst-tag.fom  {background:var(--green-lt);color:var(--green);}
+.inst-tag.ted  {background:var(--indigo-lt);color:var(--indigo);}
+.cell-robo{font-size:11px;color:var(--sky);display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ── BADGES ── */
+.badge{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:20px;
+  font-size:10px;font-weight:700;white-space:nowrap;
+}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.b-success{background:var(--green-lt);color:var(--green);}  .b-success::before{background:var(--green);}
+.b-danger {background:var(--red-lt);color:var(--red);}      .b-danger::before{background:var(--red);}
+.b-warning{background:var(--amber-lt);color:var(--amber);}  .b-warning::before{background:var(--amber);}
+.b-muted  {background:#F1F5F9;color:#64748B;}                .b-muted::before{background:#94A3B8;}
+.b-info   {background:var(--indigo-lt);color:var(--indigo);} .b-info::before{background:var(--indigo);}
+.b-neutral{background:#F1F5F9;color:var(--c2);}              .b-neutral::before{background:var(--c4);}
+
+/* ── EDITABLE CELLS ── */
+.empty-dash{color:var(--c5);font-size:11px;}
+.empty-dash.clickable{color:var(--c4);font-style:italic;font-size:10px;}
+.dot-dirty{position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--amber);border:2px solid #fff;}
+
+.sel-wrap{position:relative;display:inline-flex;align-items:center;}
+.cell-sel{
+  padding:4px 24px 4px 8px;
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  font-size:11px;font-family:var(--font);color:var(--c1);
+  background:#fff;cursor:pointer;outline:none;appearance:none;
+  min-width:120px;transition:border-color .12s,box-shadow .12s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 6px center;
+}
+.cell-sel:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,86,219,.12);}
+.sel-wrap.dirty .cell-sel{border-color:var(--amber);background-color:var(--amber-lt);}
+.sel-wrap.empty-val .cell-sel{border-color:var(--red-md);background:var(--red-lt);}
+
+.txt-cell{
+  display:flex;align-items:center;gap:5px;
+  cursor:pointer;padding:4px 7px;
+  border-radius:var(--r-sm);border:1px solid transparent;
+  min-width:80px;transition:all .12s;position:relative;
+}
+.txt-cell:hover{border-color:var(--border);background:var(--surface2);}
+.txt-val{font-size:11px;color:var(--c1);flex:1;}
+.pencil{color:var(--c5);flex-shrink:0;opacity:0;transition:opacity .12s;}
+.txt-cell:hover .pencil{opacity:1;}
+.txt-cell.dirty{border-color:var(--amber);background:var(--amber-lt);}
+.txt-cell.empty-val{border-color:var(--red-md);background:var(--red-lt);}
+
+.ie-wrap{display:flex;align-items:center;gap:3px;}
+.ie-input{
+  padding:4px 8px;
+  border:1.5px solid var(--blue);border-radius:var(--r-sm);
+  font-size:11px;font-family:var(--font);color:var(--c1);
+  outline:none;background:#fff;min-width:100px;
+  box-shadow:0 0 0 3px rgba(26,86,219,.1);
+}
+.ie-btn{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s;}
+.ie-btn.ok{background:var(--green-lt);color:var(--green);}  .ie-btn.ok:hover{background:var(--green-md);}
+.ie-btn.no{background:var(--red-lt);color:var(--red);}      .ie-btn.no:hover{background:var(--red-md);}
+
+/* ── AUDIT ── */
+.audit-cell{display:flex;flex-direction:column;gap:2px;}
+.audit-ts{font-size:10px;color:#7C3AED;font-family:var(--mono);}
+.audit-col{
+  display:inline-flex;align-items:center;
+  font-size:9px;font-weight:700;
+  background:#F5F3FF;color:#7C3AED;
+  border:1px solid #DDD6FE;border-radius:12px;padding:1px 7px;
+  max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* ── DEL BTN ── */
+.del-btn{
+  opacity:0;padding:5px;background:none;border:none;
+  color:var(--c4);cursor:pointer;border-radius:6px;
+  display:flex;align-items:center;
+  transition:opacity .12s,background .12s,color .12s;
+}
+tbody tr:hover .del-btn{opacity:1;}
+.del-btn:hover{background:var(--red-lt);color:var(--red);}
+
+/* ── CB ── */
+.cb{width:14px;height:14px;cursor:pointer;accent-color:var(--blue);}
+
+/* ── EMPTY STATE ── */
+.no-data{text-align:center;padding:60px 20px;}
+.no-data-icon{font-size:32px;margin-bottom:10px;}
+.no-data-title{font-size:15px;font-weight:700;color:var(--c1);margin-bottom:5px;}
+.no-data-sub{font-size:13px;color:var(--c3);}
+
+/* ── TABLE FOOTER ── */
+.tfoot{
+  padding:10px 16px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;background:var(--surface2);
+}
+.page-info{font-size:12px;color:var(--c2);}
+.page-info strong{color:var(--c1);}
+.page-ctrl{display:flex;align-items:center;gap:5px;}
+.pg-lbl{font-size:10px;color:var(--c4);font-weight:600;}
+.pg-sel{padding:4px 8px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:11px;font-family:var(--font);background:#fff;cursor:pointer;outline:none;}
+.pg-btn{
+  padding:5px 9px;border:1px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-weight:600;background:#fff;color:var(--c2);
+  cursor:pointer;display:flex;align-items:center;
+  transition:all .12s;font-family:var(--font);
+}
+.pg-btn:hover:not(:disabled){background:var(--blue);color:#fff;border-color:var(--blue);}
+.pg-btn:disabled{opacity:.3;cursor:not-allowed;}
+.pg-cur{font-size:11px;color:var(--c2);font-weight:600;padding:0 4px;}
+
+/* ── OVERLAY / MODAL ── */
+.overlay{
+  position:fixed;inset:0;z-index:400;
+  background:rgba(13,17,23,.6);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.modal{
+  background:var(--surface);border-radius:var(--r-lg);
+  padding:28px;width:100%;max-width:440px;
+  box-shadow:var(--sh-lg);
+  animation:mIn .2s ease;
+}
+.modal.modal-lg{max-width:560px;}
+@keyframes mIn{from{opacity:0;transform:scale(.95) translateY(8px)}}
+
+.modal-ico{
+  width:52px;height:52px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 16px;
+}
+.modal-ico.red {background:var(--red-lt);color:var(--red);}
+.modal-ico.blue{background:var(--blue-lt);color:var(--blue);}
+.modal-title{font-size:17px;font-weight:700;text-align:center;color:var(--c1);margin-bottom:8px;}
+.modal-desc{font-size:13px;color:var(--c2);text-align:center;line-height:1.6;margin-bottom:24px;}
+.modal-desc strong{color:var(--c1);}
+.modal-acts{display:flex;gap:8px;}
+.modal-acts .btn{flex:1;justify-content:center;padding:10px;font-size:13px;}
+
+.modal-tabs{display:flex;background:var(--surface2);border-radius:var(--r-sm);padding:3px;margin-bottom:16px;}
+.mtab{
+  flex:1;padding:8px;border:none;border-radius:7px;
+  font-size:12px;font-weight:600;font-family:var(--font);
+  cursor:pointer;background:transparent;color:var(--c3);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .14s;
+}
+.mtab.active{background:#fff;color:var(--c1);box-shadow:0 1px 4px rgba(0,0,0,.1);}
+
+.form-field{margin-bottom:14px;}
+.form-lbl{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--c2);margin-bottom:5px;}
+.form-in{
+  width:100%;padding:10px 12px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:13px;font-family:var(--font);color:var(--c1);
+  background:var(--surface2);outline:none;
+  transition:border-color .12s,box-shadow .12s;
+}
+.form-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.form-in::placeholder{color:var(--c4);}
+
+.notice{
+  border-radius:var(--r-sm);padding:10px 12px;
+  display:flex;align-items:flex-start;gap:8px;
+  font-size:12px;line-height:1.5;margin-bottom:14px;
+}
+.notice svg{flex-shrink:0;margin-top:1px;}
+.notice.info   {background:var(--blue-lt);border:1px solid var(--blue-md);color:var(--blue);}
+.notice.success{background:var(--green-lt);border:1px solid var(--green-md);color:#065F46;}
+.notice.danger {background:var(--red-lt);border:1px solid var(--red-md);color:var(--red);}
+
+.dropzone{
+  border:2px dashed var(--border2);border-radius:var(--r);
+  padding:24px;text-align:center;cursor:pointer;
+  transition:border-color .14s,background .14s;
+  margin-bottom:12px;background:var(--surface2);
+}
+.dropzone:hover,.dropzone.dz-over{border-color:var(--blue);background:var(--blue-lt);}
+.dz-ico{color:var(--c4);margin:0 auto 8px;display:block;}
+.dz-t{font-size:13px;font-weight:600;color:var(--c2);}
+.dz-s{font-size:11px;color:var(--c4);margin-top:3px;}
+
+.preview{margin-bottom:12px;}
+.preview-meta{font-size:12px;color:var(--c2);margin-bottom:6px;}
+.preview-meta strong{color:var(--c1);}
+.preview-scroll{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);}
+.preview-table{width:100%;border-collapse:collapse;font-size:11px;}
+.preview-table th{background:var(--surface2);padding:6px 10px;text-align:left;font-weight:700;color:var(--c3);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;}
+.preview-table td{padding:5px 10px;color:var(--c1);border-bottom:1px solid #F1F5F9;}
+.prev-more{text-align:center;color:var(--c4);font-style:italic;}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:20px;right:20px;z-index:999;
+  padding:12px 18px;border-radius:var(--r);
+  display:flex;align-items:center;gap:8px;
+  font-size:13px;font-weight:600;
+  box-shadow:var(--sh-lg);animation:tIn .25s ease;max-width:360px;
+}
+.t-success{background:#0D1117;color:#fff;}
+.t-error  {background:var(--red);color:#fff;}
+@keyframes tIn{from{opacity:0;transform:translateY(10px)}}
+
+/* ── LOADING ── */
+.load-screen{
+  height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;
+  background:var(--bg);
+}
+.load-ring{
+  width:38px;height:38px;
+  border:3px solid var(--border);border-top-color:var(--blue);
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-label{font-size:11px;font-weight:700;color:var(--c4);text-transform:uppercase;letter-spacing:.1em;}
+.load-track{width:180px;height:3px;background:var(--border);border-radius:10px;overflow:hidden;}
+.load-fill{height:100%;background:var(--blue);border-radius:10px;transition:width .3s ease;}
+
+.spin{animation:spin .65s linear infinite;}
+`;
