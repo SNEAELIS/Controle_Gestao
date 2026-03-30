@@ -1341,15 +1341,23 @@ export default function DashboardSneaElis() {
         if (!tec || tec === 'N/D') return;
         if (!map[tec]) map[tec] = { name: tec, ativo: 0, cgap: 0, concluido: 0 };
     
-        // Lógica para definir os 3 status baseados na coluna 'AJUSTE' ou 'PUBLICAÇÃO'
-        const status = String(r.AJUSTE || '').toUpperCase();
-        
-        if (STATUS_OK.some(s => status.includes(s))) {
-          map[tec].concluido += 1; // Amarelo
-        } else if (r._cgap === 'CGAP') {
-          map[tec].cgap += 1;      // Vermelho
-        } else {
-          map[tec].ativo += 1;     // Azul
+        // Pegamos o valor da coluna TRAMITADO PARA CGAP
+        // r._cgap já foi tratado no load() como String(r['TRAMITADO PARA CGAP'])
+        const cgapValue = String(r['TRAMITADO PARA CGAP'] || '').toUpperCase().trim();
+        const ajuste = String(r.AJUSTE || '').toUpperCase();
+    
+        // 1. DEFINIÇÃO DE CONCLUÍDO: Se a coluna CGAP estiver marcada como finalizada
+        // Ajuste os termos abaixo ('SIM', 'OK') conforme o que estiver escrito na sua planilha
+        if (['SIM', 'CONCLUÍDO', 'OK', 'FINALIZADO'].includes(cgapValue)) {
+          map[tec].concluido += 1;
+        } 
+        // 2. Se a coluna indicar que ainda está "EM CGAP" (pendência no setor)
+        else if (cgapValue === 'CGAP') {
+          map[tec].cgap += 1;
+        } 
+        // 3. Caso contrário, o processo ainda está "Em carga" com o técnico
+        else {
+          map[tec].ativo += 1;
         }
       });
     
