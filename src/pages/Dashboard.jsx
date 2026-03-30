@@ -1339,12 +1339,22 @@ export default function DashboardSneaElis() {
       fd.forEach(r => {
         const tec = r._tec;
         if (!tec || tec === 'N/D') return;
-        if (!map[tec]) map[tec] = { name: tec, ativo: 0, cgap: 0 };
-        if (r._cgap === 'CGAP') map[tec].cgap += 1;
-        else map[tec].ativo += 1;
+        if (!map[tec]) map[tec] = { name: tec, ativo: 0, cgap: 0, concluido: 0 };
+    
+        // Lógica para definir os 3 status baseados na coluna 'AJUSTE' ou 'PUBLICAÇÃO'
+        const status = String(r.AJUSTE || '').toUpperCase();
+        
+        if (STATUS_OK.some(s => status.includes(s))) {
+          map[tec].concluido += 1; // Amarelo
+        } else if (r._cgap === 'CGAP') {
+          map[tec].cgap += 1;      // Vermelho
+        } else {
+          map[tec].ativo += 1;     // Azul
+        }
       });
+    
       return Object.values(map)
-        .map(d => ({ ...d, total: d.ativo + d.cgap }))
+        .map(d => ({ ...d, total: d.ativo + d.cgap + d.concluido }))
         .sort((a, b) => b.total - a.total)
         .slice(0, 10);
     })();
@@ -2569,116 +2579,64 @@ export default function DashboardSneaElis() {
             ════════════════════════ */}
             <div className="ds-row ds-row-tec anim-5" style={{ marginBottom: 16 }}>
 
-              {/* ── Técnico de Formalização (barras paralelas) ── */}
-              <div className="ds-card">
-                <div className="ds-card-header">
-                  <div>
-                    <div className="ds-card-title">
-                      <i className="fas fa-users" style={{ color: '#0694A2' }} />
-                      Processos por Técnico de Formalização
-                    </div>
-                    <div className="ds-tec-legend">
-                      <span className="ds-tec-legend-item">
-                        <span className="ds-tec-legend-dot" style={{ background: '#1A56DB' }} />
-                        Em carga do técnico
-                      </span>
-                      <span className="ds-tec-legend-item">
-                        <span className="ds-tec-legend-dot" style={{ background: '#E52207' }} />
-                        Tramitado para CGAP
-                      </span>
-                      <span style={{ fontSize: 9.5, color: 'var(--text-04)', marginLeft: 4 }}>· clique para filtrar</span>
-                    </div>
-                  </div>
-                  {fTec && (
-                    <div className="ds-chip" onClick={() => setFTec(null)}>
-                      {fTec} <i className="fas fa-times" style={{ fontSize: 9 }} />
-                    </div>
-                  )}
-                </div>
-                <div className="ds-card-body">
-                  <div style={{ height: 360 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={an.byTec}
-                        margin={{ top: 28, right: 10, left: 0, bottom: 20 }}
-                        barCategoryGap="18%" barGap={3}
-                        onClick={({ activePayload }) => {
-                          if (activePayload?.[0]) {
-                            const name = activePayload[0].payload.name;
-                            setFTec(fTec === name ? null : name);
-                          }
-                        }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" vertical={false} />
-                        <XAxis dataKey="name" axisLine={{ stroke: '#E0E0E0' }} tickLine={false}
-                          tick={({ x, y, payload }) => {
-                            const firstName = payload.value.split(' ')[0];
-                            const isSel = fTec === payload.value;
-                            return (
-                              <text x={x} y={y + 14} textAnchor="middle"
-                                fill={isSel ? '#1351B4' : '#374151'}
-                                fontSize={11} fontWeight={isSel ? 800 : 600}
-                                fontFamily="Rawline, Raleway, sans-serif"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => setFTec(fTec === payload.value ? null : payload.value)}>
-                                {firstName}
-                              </text>
-                            );
-                          }} />
-                        <YAxis hide />
-                        <RTooltip
-                          cursor={{ fill: 'rgba(19,81,180,0.05)' }}
-                          content={({ active, payload }) => {
-                            if (!active || !payload?.length) return null;
-                            const d = payload[0]?.payload;
-                            return (
-                              <div className="ds-tooltip" style={{ minWidth: 180 }}>
-                                <strong style={{ fontSize: 12, marginBottom: 6 }}>{d.name}</strong>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-                                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1A56DB', display: 'inline-block' }} />
-                                      Em carga
-                                    </span>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1A56DB' }}>{d.ativo}</span>
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-                                      <span style={{ width: 8, height: 8, borderRadius: 2, background: '#E52207', display: 'inline-block' }} />
-                                      CGAP
-                                    </span>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#E52207' }}>{d.cgap}</span>
-                                  </div>
-                                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: 11, fontWeight: 600 }}>Total</span>
-                                    <span style={{ fontSize: 13, fontWeight: 800 }}>{d.total}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }} />
-                        {/* Barra Azul — Em carga */}
-                        <Bar dataKey="ativo" name="Em carga" radius={[4, 4, 0, 0]} cursor="pointer"
-                          label={{ position: 'top', fontSize: 11, fontWeight: 700, fill: '#1A56DB', formatter: v => v > 0 ? v : '' }}>
-                          {an.byTec.map((d, i) => (
-                            <Cell key={i}
-                              fill={fTec === d.name ? '#0C326F' : '#1A56DB'}
-                              opacity={fTec && fTec !== d.name ? 0.28 : 1} />
-                          ))}
-                        </Bar>
-                        {/* Barra Vermelha — CGAP */}
-                        <Bar dataKey="cgap" name="CGAP" radius={[4, 4, 0, 0]} cursor="pointer"
-                          label={{ position: 'top', fontSize: 11, fontWeight: 700, fill: '#E52207', formatter: v => v > 0 ? v : '' }}>
-                          {an.byTec.map((d, i) => (
-                            <Cell key={i}
-                              fill={fTec === d.name ? '#9B1C1C' : '#E52207'}
-                              opacity={fTec && fTec !== d.name ? 0.28 : 1} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+             {/* ── Técnico de Formalização (3 Barras) ── */}
+<div className="ds-card">
+  <div className="ds-card-header">
+    <div>
+      <div className="ds-card-title">
+        <i className="fas fa-users" style={{ color: '#0694A2' }} />
+        Processos por Técnico de Formalização
+      </div>
+      <div className="ds-tec-legend">
+        <span className="ds-tec-legend-item">
+          <span className="ds-tec-legend-dot" style={{ background: '#1A56DB' }} />
+          Em carga
+        </span>
+        <span className="ds-tec-legend-item">
+          <span className="ds-tec-legend-dot" style={{ background: '#E52207' }} />
+          CGAP
+        </span>
+        <span className="ds-tec-legend-item">
+          <span className="ds-tec-legend-dot" style={{ background: '#FFCD07' }} />
+          Concluído
+        </span>
+        <span style={{ fontSize: 9.5, color: 'var(--text-04)', marginLeft: 4 }}>· clique para filtrar</span>
+      </div>
+    </div>
+  </div>
+  <div className="ds-card-body">
+    <div style={{ height: 360 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={an.byTec} margin={{ top: 28, right: 10, left: 0, bottom: 20 }} barCategoryGap="15%" barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" vertical={false} />
+          <XAxis dataKey="name" tick={{fontSize: 10, fontWeight: 600}} />
+          <YAxis hide />
+          <RTooltip 
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0].payload;
+              return (
+                <div className="ds-tooltip">
+                  <strong>{d.name}</strong>
+                  <div style={{fontSize: 11}}>
+                    <div style={{color: '#1A56DB'}}>Em carga: <b>{d.ativo}</b></div>
+                    <div style={{color: '#E52207'}}>CGAP: <b>{d.cgap}</b></div>
+                    <div style={{color: '#B47800'}}>Concluído: <b>{d.concluido}</b></div>
+                    <hr style={{margin: '5px 0', border: 'none', borderTop: '1px solid #eee'}}/>
+                    <div>Total: <b>{d.total}</b></div>
                   </div>
                 </div>
-              </div>
+              );
+            }}
+          />
+          <Bar dataKey="ativo" fill="#1A56DB" radius={[2, 2, 0, 0]} label={{ position: 'top', fontSize: 9, fill: '#1A56DB' }} />
+          <Bar dataKey="cgap" fill="#E52207" radius={[2, 2, 0, 0]} label={{ position: 'top', fontSize: 9, fill: '#E52207' }} />
+          <Bar dataKey="concluido" fill="#FFCD07" radius={[2, 2, 0, 0]} label={{ position: 'top', fontSize: 9, fill: '#B47800' }} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+</div>
 
               {/* ── Por Situação (Ajuste) ── */}
               <div className="ds-card">

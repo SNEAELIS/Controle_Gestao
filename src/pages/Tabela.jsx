@@ -44,6 +44,14 @@ const ROBO_COLS = ['INSTRUMENTO', 'PUBLICAÇÃO NO TRANSFEREGOV', 'ENTIDADE', 'P
 const HIDDEN_COLS = ['id', 'created_at', 'vazia_1', 'vazia_2', 'updated_at', 'ultima_coluna_editada'];
 const ANOS = ['Todos', '2023', '2024', '2025', '2026'];
 
+const COLUNAS_BLOQUEADAS = new Set([
+  'id', 'Nº', 'ANO', 'PROPOSTA', 'PROCESSO', 'INSTRUMENTO', 
+  'NOME PARLAMENTAR', 'ENTIDADE', 'UF', 'Nº INSTRUMENTO', 
+  'VALOR REPASSE', 'DATA DA PUBLICAÇÃO DOU', 'PUBLICAÇÃO NO TRANSFEREGOV', 
+  'DATA DA PUBLICAÇÃO', 'created_at', 'updated_at', 
+  'ultima_coluna_editada', 'vazia_1', 'vazia_2', 'CUSTO'
+]);
+
 const MAPA_COLUNAS_EXCEL = {
   'Nº': 'Nº', 'ANO': 'ANO', 'INSTRUMENTO': 'INSTRUMENTO',
   'NOME PARLAMENTAR': 'NOME PARLAMENTAR', 'PROCESSO': 'PROCESSO',
@@ -171,39 +179,68 @@ function EditableCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState('');
   const inputRef = useRef(null);
+  
   const cellId = `${rowId}::${colKey}`;
-  const cur = editedCells[cellId] !== undefined ? editedCells[cellId] : (value ?? '');
+  const isReadOnly = COLUNAS_BLOQUEADAS.has(colKey);
+  
+  const currentVal = editedCells[cellId] !== undefined ? editedCells[cellId] : (value ?? '');
   const isDirty = editedCells[cellId] !== undefined;
-  const isEmpty = isCellEmpty(cur);
+  const isEmpty = isCellEmpty(currentVal);
 
+  // 1. Prioridade para Selects
   if (SELECT_OPTIONS[colKey]) {
-    return <SelectCell value={value} colKey={colKey} rowId={rowId}
-      editedCells={editedCells} setEditedCells={setEditedCells} />;
+    return (
+      <SelectCell 
+        value={value} colKey={colKey} rowId={rowId}
+        editedCells={editedCells} setEditedCells={setEditedCells} 
+      />
+    );
   }
 
-  const startEdit = () => { setLocalVal(cur); setEditing(true); setTimeout(() => inputRef.current?.focus(), 30); };
-  const commit = () => { setEditedCells(p => ({ ...p, [cellId]: localVal })); setEditing(false); };
+  // 2. Bloqueio de Colunas (Somente Leitura)
+  if (isReadOnly) {
+    return (
+      <div className="txt-cell tc-readonly" style={{ cursor: 'default', opacity: 0.8 }}>
+        <span className="tc-value">{currentVal || <span className="empty-dash">—</span>}</span>
+      </div>
+    );
+  }
+
+  const startEdit = () => {
+    setLocalVal(currentVal);
+    setEditing(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const commit = () => {
+    if (localVal !== currentVal) {
+      setEditedCells(prev => ({ ...prev, [cellId]: localVal }));
+    }
+    setEditing(false);
+  };
+
   const discard = () => setEditing(false);
 
-  if (editing) return (
-    <div className="edit-active">
-      <input ref={inputRef} className="edit-input" value={localVal}
-        onChange={e => setLocalVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') discard(); }}
-        onBlur={commit} />
-      <div className="edit-actions">
-        <button className="ea-btn ea-ok" onMouseDown={e => { e.preventDefault(); commit(); }}><Check size={11} /></button>
-        <button className="ea-btn ea-no" onMouseDown={e => { e.preventDefault(); discard(); }}><XCircle size={11} /></button>
+  if (editing) {
+    return (
+      <div className="edit-active">
+        <input 
+          ref={inputRef} className="edit-input" value={localVal}
+          onChange={e => setLocalVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') discard(); }}
+          onBlur={commit} 
+        />
+        <div className="edit-actions">
+          <button className="ea-btn ea-ok" onMouseDown={e => { e.preventDefault(); commit(); }}><Check size={11} /></button>
+          <button className="ea-btn ea-no" onMouseDown={e => { e.preventDefault(); discard(); }}><XCircle size={11} /></button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div className={`txt-cell ${isDirty ? 'tc-dirty' : ''} ${isEmpty ? 'tc-empty' : ''}`} onClick={startEdit}>
-      {isEmpty
-        ? <span className="tc-placeholder">Clique para preencher</span>
-        : <span className="tc-value">{cur}</span>
-      }
+      {isEmpty ? <span className="tc-placeholder">Clique para preencher</span> : <span className="tc-value">{currentVal}</span>}
       <Edit3 size={10} className="tc-pencil" />
       {isDirty && <span className="dirty-dot" />}
     </div>
@@ -511,22 +548,38 @@ export default function TabelaGerencialMaster() {
   const executeSave = async () => {
     setSaving(true);
     try {
-      const upd = {};
+      const updatesByRow = {};
+      
       for (const [cellId, value] of Object.entries(editedCells)) {
-        const [id, key] = cellId.split('::');
-        if (!upd[id]) upd[id] = { id };
-        upd[id][key] = value;
-        upd[id]['ultima_coluna_editada'] = key;
+        const [id, colKey] = cellId.split('::');
+        
+        // SEGURANÇA EXTRA: Não envia colunas bloqueadas para o Supabase
+        if (COLUNAS_BLOQUEADAS.has(colKey)) continue;
+  
+        if (!updatesByRow[id]) updatesByRow[id] = { id };
+        updatesByRow[id][colKey] = value;
+        updatesByRow[id]['ultima_coluna_editada'] = colKey;
       }
-      for (const u of Object.values(upd)) {
-        const { id, ...fields } = u;
+  
+      if (Object.keys(updatesByRow).length === 0) {
+        setEditedCells({});
+        setSaving(false);
+        return;
+      }
+  
+      for (const rowData of Object.values(updatesByRow)) {
+        const { id, ...fields } = rowData;
         await supabase.from('formalizacoes').update(fields).eq('id', id);
       }
+  
       setEditedCells({});
-      notify('success', `${Object.keys(upd).length} registro(s) salvo(s) com sucesso.`);
+      notify('success', 'Alterações guardadas com sucesso!');
       fetchAllData();
-    } catch { notify('error', 'Erro ao salvar. Tente novamente.'); }
-    finally { setSaving(false); }
+    } catch (err) {
+      notify('error', 'Erro ao guardar alterações.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const executeDelete = async payload => {
