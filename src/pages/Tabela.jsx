@@ -13,19 +13,22 @@ import {
   Hash, Upload, Clock, ChevronUp, ChevronDown,
   Edit3, Check, XCircle, Info, BarChart2, TrendingUp,
   Calendar, AlertOctagon, Columns, Eye, EyeOff,
-  Sparkles, ShieldCheck, Zap,
+  Sparkles, ShieldCheck, Zap, Home, PanelLeftClose, PanelLeftOpen,
+  SlidersHorizontal,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 
-// ─── CONSTANTS ──────────────────────────────────────────────────────────────
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+// Substitua o SELECT_OPTIONS por este:
 const SELECT_OPTIONS = {
   'CELEBRADO COM CLAUSULA SUSPENSIVA':      ['SIM', 'NÃO', 'NÃO SE APLICA'],
   'NECESSIDADE DE ADITIVO PARA SUSPENSIVA': ['SIM', 'NÃO', 'NÃO SE APLICA'],
   'PAD - CRONO':                            ['SIM', 'NÃO', 'PORTARIA 64/2025'],
   'PARECER TRANSFEREGOV':                   ['SIM', 'NÃO', 'NÃO SE APLICA'],
-  'AJUSTE':                                 ['PENDENTE', 'REALIZADO', 'NÃO SE APLICA'],
-  'CANCELAR EMPENHO':                       ['SIM', 'NÃO', 'SOLICITADO', 'NÃO SE APLICA'],
+  'AJUSTE':                                 ['PENDENTE', 'REALIZADO', 'SIM', 'NÃO', 'NÃO SE APLICA'],
+  'CANCELAR EMPENHO':                        ['SIM', 'NÃO', 'SOLICITADO', 'NÃO SE APLICA'],
   'REJEITAR NO TRANSFEREGOV':               ['CONJUR', 'REJEITAR', 'FORMALIZAR', 'REALIZADO', 'NÃO SE APLICA'],
   'SOB LIMINAR':                            ['CONJUR', 'REJEITAR', 'FORMALIZAR', 'NÃO SE APLICA'],
   'NECESSIDADE DE ADITIVO':                 ['SIM', 'NÃO', 'PENDENTE', 'NÃO SE APLICA'],
@@ -33,56 +36,41 @@ const SELECT_OPTIONS = {
   'EQUIPE':                                 ['EQUIPE 6', 'EQUIPE 7'],
   'TÉCNICO DE FORMALIZAÇÃO':                ['THALITA', 'SAMARA', 'GLENDA', 'HELLEN', 'ALINE', 'SUELHY', 'JAQUELINE', 'CLARISSA', 'JÚLIO'],
   'CUSTO':                                  ['SIM', 'NÃO', 'NÃO SE APLICA'],
-  'PUBLICAÇÃO NO TRANSFEREGOV':             ['SIM', 'NÃO'],
-  'TRAMITADO PARA CGAP':                    ['SIM', 'NÃO', 'NÃO SE APLICA'],
+  'PUBLICAÇÃO NO TRANSFEREGOV':              ['SIM', 'NÃO'],
+  'TRAMITADO PARA CGAP':                    ['CGAP', 'CGC', 'CGFP', 'CGALIS', 'CONCLUÍDO', 'SIM', 'REJEITADA', 'NÃO', 'NÃO SE APLICA'],
 };
 
 const ROBO_COLS = ['INSTRUMENTO', 'PUBLICAÇÃO NO TRANSFEREGOV', 'ENTIDADE', 'PROCESSO', 'DATA DA PUBLICAÇÃO'];
 const HIDDEN_COLS = ['id', 'created_at', 'vazia_1', 'vazia_2', 'updated_at', 'ultima_coluna_editada'];
 const ANOS = ['Todos', '2023', '2024', '2025', '2026'];
 
-// ── Colunas que a planilha possui e que devem ser importadas ──
-// Mapeamento: header Excel → coluna do banco
 const MAPA_COLUNAS_EXCEL = {
-  'Nº':                              'Nº',
-  'ANO':                             'ANO',
-  'INSTRUMENTO':                     'INSTRUMENTO',
-  'NOME PARLAMENTAR':                'NOME PARLAMENTAR',
-  'PROCESSO':                        'PROCESSO',
-  'PROPOSTA':                        'PROPOSTA',
-  'ENTIDADE':                        'ENTIDADE',
-  'UF':                              'UF',
-  'Nº INSTRUMENTO':                  'Nº INSTRUMENTO',
-  'VALOR REPASSE':                   'VALOR REPASSE',
-  'DATA DA PUBLICAÇÃO DOU':          'DATA DA PUBLICAÇÃO DOU',
+  'Nº': 'Nº', 'ANO': 'ANO', 'INSTRUMENTO': 'INSTRUMENTO',
+  'NOME PARLAMENTAR': 'NOME PARLAMENTAR', 'PROCESSO': 'PROCESSO',
+  'PROPOSTA': 'PROPOSTA', 'ENTIDADE': 'ENTIDADE', 'UF': 'UF',
+  'Nº INSTRUMENTO': 'Nº INSTRUMENTO', 'VALOR REPASSE': 'VALOR REPASSE',
+  'DATA DA PUBLICAÇÃO DOU': 'DATA DA PUBLICAÇÃO DOU',
   'CELEBRADO COM CLAUSULA SUSPENSIVA': 'CELEBRADO COM CLAUSULA SUSPENSIVA',
-  'PAD - CRONO':                     'PAD - CRONO',
-  'PUBLICAÇÃO TRANSFEREGOV':         'PUBLICAÇÃO TRANSFEREGOV',
-  'PARECER TRANSFEREGOV':            'PARECER TRANSFEREGOV',
-  'AJUSTE':                          'AJUSTE',
-  'TÉRMINO DA VIGÊNCIA':             'TÉRMINO DA VIGÊNCIA',
-  'TERMO DE REFERÊNCIA':             'TERMO DE REFERÊNCIA',
-  'DATA LIMITE PARA SANEAMENTO':     'DATA LIMITE PARA SANEAMENTO',
-  'CANCELAR EMPENHO':                'CANCELAR EMPENHO',
-  'REJEITAR NO TRANSFEREGOV':        'REJEITAR NO TRANSFEREGOV',
-  'SOB LIMINAR':                     'SOB LIMINAR',
-  'DATA DO ADITIVO':                 'DATA DO ADITIVO',
-  'NECESSIDADE DE ADITIVO':          'NECESSIDADE DE ADITIVO',
-  'INSTRUÇÃO PROCESSUAL':            'INSTRUÇÃO PROCESSUAL',
-  'TRAMITADO PARA CGAP':             'TRAMITADO PARA CGAP',
-  'EQUIPE':                          'EQUIPE',
-  'TÉCNICO DE FORMALIZAÇÃO':         'TÉCNICO DE FORMALIZAÇÃO',
-  'PUBLICAÇÃO NO TRANSFEREGOV':      'PUBLICAÇÃO NO TRANSFEREGOV',
-  'DATA DA PUBLICAÇÃO':              'DATA DA PUBLICAÇÃO',
-  'SITUACIONAL':                     'SITUACIONAL',
+  'PAD - CRONO': 'PAD - CRONO', 'PUBLICAÇÃO TRANSFEREGOV': 'PUBLICAÇÃO TRANSFEREGOV',
+  'PARECER TRANSFEREGOV': 'PARECER TRANSFEREGOV', 'AJUSTE': 'AJUSTE',
+  'TÉRMINO DA VIGÊNCIA': 'TÉRMINO DA VIGÊNCIA', 'TERMO DE REFERÊNCIA': 'TERMO DE REFERÊNCIA',
+  'DATA LIMITE PARA SANEAMENTO': 'DATA LIMITE PARA SANEAMENTO',
+  'CANCELAR EMPENHO': 'CANCELAR EMPENHO',
+  'REJEITAR NO TRANSFEREGOV': 'REJEITAR NO TRANSFEREGOV',
+  'SOB LIMINAR': 'SOB LIMINAR', 'DATA DO ADITIVO': 'DATA DO ADITIVO',
+  'NECESSIDADE DE ADITIVO': 'NECESSIDADE DE ADITIVO',
+  'INSTRUÇÃO PROCESSUAL': 'INSTRUÇÃO PROCESSUAL',
+  'TRAMITADO PARA CGAP': 'TRAMITADO PARA CGAP',
+  'EQUIPE': 'EQUIPE', 'TÉCNICO DE FORMALIZAÇÃO': 'TÉCNICO DE FORMALIZAÇÃO',
+  'PUBLICAÇÃO NO TRANSFEREGOV': 'PUBLICAÇÃO NO TRANSFEREGOV',
+  'DATA DA PUBLICAÇÃO': 'DATA DA PUBLICAÇÃO', 'SITUACIONAL': 'SITUACIONAL',
 };
 
-// Colunas protegidas - nunca sobrescrever no banco
 const COLUNAS_PROTEGIDAS = new Set([
   'id', 'created_at', 'updated_at', 'CUSTO', 'vazia_1', 'vazia_2', 'ultima_coluna_editada',
 ]);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 const fmtDate = iso => {
   if (!iso) return null;
   try {
@@ -93,97 +81,80 @@ const fmtDate = iso => {
   } catch { return null; }
 };
 
-const isCellEmpty = v => v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '—';
+const isCellEmpty = v =>
+  v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '—';
 
-/**
- * Limpa um valor lido do Excel:
- * - Remove espaços extras
- * - Converte datas serializadas do Excel para ISO
- * - Descarta fórmulas (strings que começam com "=")
- * - Normaliza null/NaN/undefined → null
- */
-const limparValorExcel = (v) => {
+const limparValorExcel = v => {
   if (v === null || v === undefined) return null;
   const s = String(v).trim().replace(/\r?\n|\t/g, ' ');
   if (s === '' || ['nan', 'nat', 'none', 'null'].includes(s.toLowerCase())) return null;
-  // Descartar fórmulas Excel que não foram resolvidas
   if (s.startsWith('=')) return null;
-  // Tentar parsear data dd/mm/yyyy
   const dateMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (dateMatch) {
-    const [, d, m, y] = dateMatch;
-    return `${y}-${m}-${d}`;
-  }
+  if (dateMatch) { const [, d, m, y] = dateMatch; return `${y}-${m}-${d}`; }
   return s;
 };
 
-/**
- * Normaliza valores de colunas com SELECT para uppercase,
- * tentando mapear variações comuns.
- */
 const normalizarSelect = (colKey, valor) => {
   if (!valor) return valor;
   const v = String(valor).trim().toUpperCase();
-  // Mapeamentos de variação → padrão
   const MAP = {
-    'PENDENTE':        'PENDENTE',
-    'REALIZADO':       'REALIZADO',
-    'NÃO SE APLICA':   'NÃO SE APLICA',
-    'NAO SE APLICA':   'NÃO SE APLICA',
-    'SIM':             'SIM',
-    'NÃO':             'NÃO',
-    'NAO':             'NÃO',
-    'CONVÊNIO':        'CONVÊNIO',
-    'CONVENIO':        'CONVÊNIO',
-    'TERMO DE FOMENTO':'TERMO DE FOMENTO',
-    'TED':             'TERMO DE EXECUÇÃO DESCENTRALIZADA',
-    'EQUIPE 6':        'EQUIPE 6',
-    'EQUIPE 7':        'EQUIPE 7',
+    'PENDENTE': 'PENDENTE', 'REALIZADO': 'REALIZADO',
+    'NÃO SE APLICA': 'NÃO SE APLICA', 'NAO SE APLICA': 'NÃO SE APLICA',
+    'SIM': 'SIM', 'NÃO': 'NÃO', 'NAO': 'NÃO',
+    'CONVÊNIO': 'CONVÊNIO', 'CONVENIO': 'CONVÊNIO',
+    'TERMO DE FOMENTO': 'TERMO DE FOMENTO',
+    'TED': 'TERMO DE EXECUÇÃO DESCENTRALIZADA',
+    'EQUIPE 6': 'EQUIPE 6', 'EQUIPE 7': 'EQUIPE 7',
   };
   if (SELECT_OPTIONS[colKey]) {
-    // Tenta match exato (case insensitive)
     const match = SELECT_OPTIONS[colKey].find(opt => opt.toUpperCase() === v);
     if (match) return match;
-    // Tenta match via MAP
     if (MAP[v] && SELECT_OPTIONS[colKey].includes(MAP[v])) return MAP[v];
   }
-  return valor; // retorna original se não conseguir normalizar
+  return valor;
 };
 
-// ─── BADGE ──────────────────────────────────────────────────────────────────
+// ─── BADGE ────────────────────────────────────────────────────────────────────
 function Badge({ value }) {
   if (!value || value === '—') return <span className="empty-dash">—</span>;
   const v = String(value).toUpperCase().trim();
   let cls = 'neutral';
-  if (['SIM', 'REALIZADO', 'FORMALIZAR'].includes(v))        cls = 'success';
-  else if (['NÃO', 'REJEITAR'].includes(v))                   cls = 'danger';
-  else if (['PENDENTE', 'SOLICITADO', 'CONJUR'].includes(v))  cls = 'warning';
-  else if (v === 'NÃO SE APLICA')                             cls = 'muted';
-  else if (['PORTARIA 64/2025'].includes(v))                  cls = 'info';
+  if (['SIM', 'REALIZADO', 'FORMALIZAR'].includes(v))       cls = 'success';
+  else if (['NÃO', 'REJEITAR'].includes(v))                  cls = 'danger';
+  else if (['PENDENTE', 'SOLICITADO', 'CONJUR'].includes(v)) cls = 'warning';
+  else if (v === 'NÃO SE APLICA')                            cls = 'muted';
+  else if (['PORTARIA 64/2025'].includes(v))                 cls = 'info';
   return <span className={`badge b-${cls}`}>{value}</span>;
 }
 
-// ─── SELECT CELL ─────────────────────────────────────────────────────────────
+// ─── SELECT CELL ──────────────────────────────────────────────────────────────
 function SelectCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   const cellId = `${rowId}::${colKey}`;
-  const cur = editedCells[cellId] !== undefined ? editedCells[cellId] : (value ?? '');
+  
+  // Normaliza o valor vindo do banco para bater com as opções (Case-insensitive)
+  const dbValNormalized = useMemo(() => {
+    if (!value) return "";
+    const options = SELECT_OPTIONS[colKey] || [];
+    // Tenta achar o valor exato ou o valor em maiúsculo
+    return options.find(opt => opt.toUpperCase() === String(value).trim().toUpperCase()) || value;
+  }, [value, colKey]);
+
+  const cur = editedCells[cellId] !== undefined ? editedCells[cellId] : dbValNormalized;
   const isDirty = editedCells[cellId] !== undefined;
-  const isEmpty = isCellEmpty(cur);
   const options = SELECT_OPTIONS[colKey] || [];
 
-  const getColor = (val) => {
+  const getColor = val => {
     const v = String(val).toUpperCase();
-    if (['SIM', 'REALIZADO', 'FORMALIZAR'].includes(v)) return 'sel-green';
-    if (['NÃO', 'REJEITAR'].includes(v)) return 'sel-red';
+    if (['SIM', 'REALIZADO', 'FORMALIZAR', 'CONCLUÍDO', 'CGAP', 'CGALIS'].includes(v)) return 'sel-green';
+    if (['NÃO', 'REJEITAR', 'REJEITADA'].includes(v)) return 'sel-red';
     if (['PENDENTE', 'SOLICITADO', 'CONJUR'].includes(v)) return 'sel-amber';
-    if (v === 'NÃO SE APLICA') return 'sel-gray';
-    return '';
+    return 'sel-gray';
   };
 
   return (
     <div className={`sel-container ${isDirty ? 'sel-dirty' : ''}`}>
       <select
-        className={`cell-select ${getColor(cur)} ${isEmpty ? 'sel-empty' : ''}`}
+        className={`cell-select ${getColor(cur)}`}
         value={cur}
         onChange={e => setEditedCells(p => ({ ...p, [cellId]: e.target.value }))}
       >
@@ -195,7 +166,7 @@ function SelectCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   );
 }
 
-// ─── EDITABLE TEXT CELL ──────────────────────────────────────────────────────
+// ─── EDITABLE TEXT CELL ───────────────────────────────────────────────────────
 function EditableCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   const [editing, setEditing] = useState(false);
   const [localVal, setLocalVal] = useState('');
@@ -206,31 +177,26 @@ function EditableCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   const isEmpty = isCellEmpty(cur);
 
   if (SELECT_OPTIONS[colKey]) {
-    return <SelectCell value={value} colKey={colKey} rowId={rowId} editedCells={editedCells} setEditedCells={setEditedCells} />;
+    return <SelectCell value={value} colKey={colKey} rowId={rowId}
+      editedCells={editedCells} setEditedCells={setEditedCells} />;
   }
 
   const startEdit = () => { setLocalVal(cur); setEditing(true); setTimeout(() => inputRef.current?.focus(), 30); };
   const commit = () => { setEditedCells(p => ({ ...p, [cellId]: localVal })); setEditing(false); };
   const discard = () => setEditing(false);
 
-  if (editing) {
-    return (
-      <div className="edit-active">
-        <input
-          ref={inputRef}
-          className="edit-input"
-          value={localVal}
-          onChange={e => setLocalVal(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') discard(); }}
-          onBlur={commit}
-        />
-        <div className="edit-actions">
-          <button className="ea-btn ea-ok" onMouseDown={e => { e.preventDefault(); commit(); }}><Check size={11} /></button>
-          <button className="ea-btn ea-no" onMouseDown={e => { e.preventDefault(); discard(); }}><XCircle size={11} /></button>
-        </div>
+  if (editing) return (
+    <div className="edit-active">
+      <input ref={inputRef} className="edit-input" value={localVal}
+        onChange={e => setLocalVal(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') discard(); }}
+        onBlur={commit} />
+      <div className="edit-actions">
+        <button className="ea-btn ea-ok" onMouseDown={e => { e.preventDefault(); commit(); }}><Check size={11} /></button>
+        <button className="ea-btn ea-no" onMouseDown={e => { e.preventDefault(); discard(); }}><XCircle size={11} /></button>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className={`txt-cell ${isDirty ? 'tc-dirty' : ''} ${isEmpty ? 'tc-empty' : ''}`} onClick={startEdit}>
@@ -244,8 +210,10 @@ function EditableCell({ value, colKey, rowId, editedCells, setEditedCells }) {
   );
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function TabelaGerencialMaster() {
+  const navigate = useNavigate();
+
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -274,10 +242,11 @@ export default function TabelaGerencialMaster() {
     proposta: '', instrumento: 'Todos', ajuste: 'Todos',
     empenho: 'Todos', tecnico: 'Todos', uf: 'Todos',
     processo: '', entidade: '', ano: 'Todos',
+    tramitadoCgap: 'Todos',
     emptyCols: [], filledCols: [],
   });
 
-  // ── Fetch ──
+  // ── Fetch ────────────────────────────────────────────────────────────────────
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
@@ -298,7 +267,6 @@ export default function TabelaGerencialMaster() {
   }, []);
 
   useEffect(() => { fetchAllData(); }, [fetchAllData]);
-
   useEffect(() => {
     if (syncLogRef.current) syncLogRef.current.scrollTop = syncLogRef.current.scrollHeight;
   }, [excelSyncLog]);
@@ -307,56 +275,95 @@ export default function TabelaGerencialMaster() {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
   };
+  const addLog = msg => setExcelSyncLog(p => [...p, { ts: new Date().toLocaleTimeString('pt-BR'), msg }]);
 
-  const addLog = (msg) => setExcelSyncLog(p => [...p, { ts: new Date().toLocaleTimeString('pt-BR'), msg }]);
-
-  // ── All editable cols ──
   const allEditableCols = useMemo(() => {
     if (!data.length) return [];
     return Object.keys(data[0]).filter(k => !HIDDEN_COLS.includes(k));
   }, [data]);
 
-  // ── Filtered ──
+  // ── FIX: AJUSTE & TRAMITADO PARA CGAP filter ─────────────────────────────────
   const filteredData = useMemo(() => data.filter(row => {
     const f = filters;
+
+    // 1. Proposta (Busca parcial)
     if (f.proposta && !String(row['PROPOSTA'] || '').toLowerCase().includes(f.proposta.toLowerCase())) return false;
+
+    // 2. Instrumento (Busca parcial normalizada)
     if (f.instrumento !== 'Todos') {
       const inst = String(row['INSTRUMENTO'] || '').toUpperCase();
       const filtInst = f.instrumento.toUpperCase();
-      if (!inst.includes(filtInst) && inst !== filtInst) return false;
+      if (!inst.includes(filtInst)) return false;
     }
+
+    // 3. AJUSTE (Normalização Case-Insensitive para aceitar "Pendente" ou "PENDENTE")
     if (f.ajuste !== 'Todos') {
-      const aj = String(row['AJUSTE'] || '').toUpperCase();
-      if (aj !== f.ajuste.toUpperCase()) return false;
+      const valAjuste = String(row['AJUSTE'] || '').trim().toUpperCase();
+      const filtAjuste = f.ajuste.toUpperCase();
+      if (valAjuste !== filtAjuste) return false;
     }
+
+    // 4. CANCELAR EMPENHO
     if (f.empenho !== 'Todos') {
-      const e = String(row['CANCELAR EMPENHO'] || '').toUpperCase();
-      if (f.empenho === 'SIM' && e !== 'SIM') return false;
-      if (f.empenho === 'NÃO' && e !== 'NÃO') return false;
+      const e = String(row['CANCELAR EMPENHO'] || '').trim().toUpperCase();
+      if (e !== f.empenho.toUpperCase()) return false;
     }
-    if (f.tecnico !== 'Todos' && String(row['TÉCNICO DE FORMALIZAÇÃO'] || '').toUpperCase() !== f.tecnico.toUpperCase()) return false;
+
+    // 5. Técnico de Formalização
+    if (f.tecnico !== 'Todos') {
+      const tecnicoRow = String(row['TÉCNICO DE FORMALIZAÇÃO'] || '').trim().toUpperCase();
+      if (tecnicoRow !== f.tecnico.toUpperCase()) return false;
+    }
+
+    // 6. UF
     if (f.uf !== 'Todos' && row['UF'] !== f.uf) return false;
+
+    // 7. Processo e Entidade (Busca parcial)
     if (f.processo && !String(row['PROCESSO'] || '').toLowerCase().includes(f.processo.toLowerCase())) return false;
     if (f.entidade && !String(row['ENTIDADE'] || '').toLowerCase().includes(f.entidade.toLowerCase())) return false;
+
+    // 8. Ano (Baseado no final da string da proposta /2025)
     if (f.ano !== 'Todos') {
       const prop = String(row['PROPOSTA'] || '');
       const match = prop.match(/\/(\d{4})$/);
       if (!match || match[1] !== f.ano) return false;
     }
+
+    // 9. TRAMITADO PARA CGAP (Lógica especial para as siglas do seu banco: CGAP, CGALIS, etc.)
+    if (f.tramitadoCgap !== 'Todos') {
+      const valCgap = String(row['TRAMITADO PARA CGAP'] || '').trim().toUpperCase();
+      const filtCgap = f.tramitadoCgap.toUpperCase();
+
+      if (filtCgap === 'SIM') {
+        // Se o usuário filtrou por SIM, mostramos tudo que NÃO seja vazio, NÃO ou "NÃO SE APLICA"
+        // Isso fará aparecer os registros com "CGAP", "CGALIS", "CGFP", "SIM", etc.
+        if (!valCgap || valCgap === 'NÃO' || valCgap === 'NÃO SE APLICA') return false;
+      } else {
+        // Para filtros específicos (NÃO ou NÃO SE APLICA)
+        if (valCgap !== filtCgap) return false;
+      }
+    }
+
+    // 10. Colunas Vazias / Preenchidas
     for (const col of f.emptyCols) { if (!isCellEmpty(row[col])) return false; }
     for (const col of f.filledCols) { if (isCellEmpty(row[col])) return false; }
+
+    // 11. Global Filter (Busca em todas as colunas)
     if (globalFilter) {
       const gf = globalFilter.toLowerCase();
       return Object.values(row).some(v => String(v || '').toLowerCase().includes(gf));
     }
+
     return true;
   }), [data, filters, globalFilter]);
 
-  // ── Stats ──
+  // ── Stats ─────────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const total = data.length;
-    const pendentes = data.filter(d => String(d['AJUSTE'] || '').toUpperCase() === 'PENDENTE').length;
-    const realizados = data.filter(d => String(d['AJUSTE'] || '').toUpperCase() === 'REALIZADO').length;
+    // FIX: case-insensitive count for AJUSTE and TRAMITADO
+    const pendentes = data.filter(d => String(d['AJUSTE'] || '').trim().toUpperCase() === 'PENDENTE').length;
+    const realizados = data.filter(d => String(d['AJUSTE'] || '').trim().toUpperCase() === 'REALIZADO').length;
+    const tramitados = data.filter(d => String(d['TRAMITADO PARA CGAP'] || '').trim().toUpperCase() === 'SIM').length;
     const valorTotal = data.reduce((s, r) => s + (parseFloat(r['VALOR REPASSE']) || 0), 0);
     const emptyStats = {};
     for (const col of allEditableCols) {
@@ -369,10 +376,10 @@ export default function TabelaGerencialMaster() {
       acc[year] = (acc[year] || 0) + 1;
       return acc;
     }, {});
-    return { total, pendentes, realizados, valorTotal, emptyStats, byYear };
+    return { total, pendentes, realizados, tramitados, valorTotal, emptyStats, byYear };
   }, [data, allEditableCols]);
 
-  // ── Columns ──
+  // ── Columns ───────────────────────────────────────────────────────────────────
   const columns = useMemo(() => {
     const allKeys = data.length > 0 ? Object.keys(data[0]) : [];
     const fixed = ['PROPOSTA', 'INSTRUMENTO', 'VALOR REPASSE'];
@@ -491,7 +498,7 @@ export default function TabelaGerencialMaster() {
   const pageCount = table.getPageCount();
   const dirtyCount = Object.keys(editedCells).length;
 
-  // ── Save ──
+  // ── Save ──────────────────────────────────────────────────────────────────────
   const handleSave = () => {
     if (!dirtyCount) return;
     setConfirmModal({
@@ -522,7 +529,7 @@ export default function TabelaGerencialMaster() {
     finally { setSaving(false); }
   };
 
-  const executeDelete = async (payload) => {
+  const executeDelete = async payload => {
     if (payload) {
       await supabase.from('formalizacoes').delete().eq('id', payload.id);
       setSelectedRows(s => { const n = new Set(s); n.delete(payload.id); return n; });
@@ -560,93 +567,57 @@ export default function TabelaGerencialMaster() {
     setNewModal(false); setNewProposta(''); fetchAllData();
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // ── IMPORTAÇÃO EXCEL CORRIGIDA ────────────────────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────────
-  const processExcelFile = (file) => {
+  // ── Excel Import ──────────────────────────────────────────────────────────────
+  const processExcelFile = file => {
     setExcelError(''); setExcelFile(null); setExcelDuplicates([]); setExcelSyncLog([]);
     const reader = new FileReader();
-  
-    reader.onload = async (e) => {
+    reader.onload = async e => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-  
-        // 1. Localiza a aba correta
-        let wsName = wb.SheetNames.find(n => 
+        let wsName = wb.SheetNames.find(n =>
           n.toLowerCase().includes('controle') || n.toLowerCase().includes('formaliz')
         ) || wb.SheetNames[0];
-  
         const ws = wb.Sheets[wsName];
         const rawRows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
-  
-        if (!rawRows.length) { 
-          setExcelError('Planilha vazia ou sem dados.'); 
-          return; 
-        }
-  
-        // 2. Busca TODOS os registros do banco (Paginado para ignorar o limite de 1000)
-        addLog("🔍 Verificando registros existentes no banco de dados...");
-        let allExisting = [];
-        let from = 0;
-        const step = 1000;
-        
+        if (!rawRows.length) { setExcelError('Planilha vazia ou sem dados.'); return; }
+
+        addLog('🔍 Verificando registros existentes no banco de dados...');
+        let allExisting = [], from = 0, step = 1000;
         while (true) {
           const { data: chunk, error } = await supabase
-            .from('formalizacoes')
-            .select('PROPOSTA')
-            .range(from, from + step - 1);
-          
+            .from('formalizacoes').select('PROPOSTA').range(from, from + step - 1);
           if (error) throw error;
           if (!chunk || chunk.length === 0) break;
-          
           allExisting = [...allExisting, ...chunk];
           if (chunk.length < step) break;
           from += step;
         }
-  
-        // Criar um Set para busca rápida (Limpando espaços e convertendo para Maiúsculo)
+
         const existingPropostasSet = new Set(
-          allExisting
-            .map(r => String(r.PROPOSTA || '').trim().toUpperCase())
-            .filter(val => val !== '')
+          allExisting.map(r => String(r.PROPOSTA || '').trim().toUpperCase()).filter(v => v !== '')
         );
-  
-        // 3. Processamento e Normalização
-        const toInsert = [];
-        const toUpdate = [];
-        const duplicatesFound = [];
-        const propostasNaPlanilhaAtual = new Set(); // Para evitar duplicados dentro da própria planilha
-  
-        rawRows.forEach((row) => {
-          // Pega a proposta independente de espaços no nome da coluna/header
+
+        const toInsert = [], toUpdate = [], duplicatesFound = [];
+        const propostasNaPlanilhaAtual = new Set();
+
+        rawRows.forEach(row => {
           const headerProposta = Object.keys(row).find(k => k.trim().toUpperCase() === 'PROPOSTA');
           const propRaw = headerProposta ? row[headerProposta] : null;
           const propClean = String(limparValorExcel(propRaw) || '').trim();
-  
-          // Pula se a proposta estiver vazia
-          if (!propClean || propClean === '') return;
-  
-          // Pula se já processamos essa mesma proposta nesta importação (evita duplicar se a planilha estiver suja)
-          if (propostasNaPlanilhaAtual.has(propClean.toUpperCase())) return;
+          if (!propClean || propostasNaPlanilhaAtual.has(propClean.toUpperCase())) return;
           propostasNaPlanilhaAtual.add(propClean.toUpperCase());
-  
-          // Monta o objeto de dados (Payload)
+
           const payload = {};
           for (const [headerExcel, colBanco] of Object.entries(MAPA_COLUNAS_EXCEL)) {
             const keyInRow = Object.keys(row).find(k => k.trim() === headerExcel);
             if (!keyInRow) continue;
-  
             let val = limparValorExcel(row[keyInRow]);
             if (val === null) continue;
-  
             payload[colBanco] = normalizarSelect(colBanco, val);
           }
-  
-          // Garante que a proposta salva está limpa e remove colunas protegidas
           payload['PROPOSTA'] = propClean;
           COLUNAS_PROTEGIDAS.forEach(cp => delete payload[cp]);
-  
-          // 4. Decide se é Novo ou Atualização
+
           if (existingPropostasSet.has(propClean.toUpperCase())) {
             duplicatesFound.push(propClean);
             toUpdate.push({ propKey: propClean, payload });
@@ -654,72 +625,46 @@ export default function TabelaGerencialMaster() {
             toInsert.push(payload);
           }
         });
-  
+
         if (toInsert.length === 0 && toUpdate.length === 0) {
           setExcelError('Nenhuma proposta válida encontrada para importar.');
           return;
         }
-  
-        setExcelFile({
-          name: file.name,
-          wsName,
-          toInsert,
-          toUpdate,
-          total: toInsert.length + toUpdate.length,
-        });
+        setExcelFile({ name: file.name, wsName, toInsert, toUpdate, total: toInsert.length + toUpdate.length });
         setExcelDuplicates(duplicatesFound.map(p => ({ proc: p })));
-  
       } catch (err) {
         console.error(err);
         setExcelError('Erro ao processar arquivo: ' + err.message);
       }
     };
-  
     reader.readAsArrayBuffer(file);
   };
 
   const handleExcelSync = async (updateDuplicates = false) => {
     if (!excelFile) return;
-    setExcelSyncing(true);
-    setExcelSyncLog([]);
+    setExcelSyncing(true); setExcelSyncLog([]);
     const now = new Date().toISOString();
-
     try {
       let inserted = 0, updated = 0, skipped = 0;
       const BATCH = 30;
-
-      // INSERT novos
       if (excelFile.toInsert.length > 0) {
         addLog(`📥 Inserindo ${excelFile.toInsert.length} novo(s) registro(s)...`);
         for (let i = 0; i < excelFile.toInsert.length; i += BATCH) {
-          const batch = excelFile.toInsert.slice(i, i + BATCH).map(p => ({
-            ...p, created_at: now, updated_at: now,
-          }));
+          const batch = excelFile.toInsert.slice(i, i + BATCH).map(p => ({ ...p, created_at: now, updated_at: now }));
           const { error } = await supabase.from('formalizacoes').insert(batch);
-          if (error) {
-            addLog(`   ⚠️ Erro no lote ${Math.ceil(i / BATCH) + 1}: ${error.message}`);
-          } else {
-            inserted += batch.length;
-            addLog(`   ✅ ${inserted}/${excelFile.toInsert.length} inseridos`);
-          }
+          if (error) addLog(`   ⚠️ Erro no lote ${Math.ceil(i / BATCH) + 1}: ${error.message}`);
+          else { inserted += batch.length; addLog(`   ✅ ${inserted}/${excelFile.toInsert.length} inseridos`); }
           await new Promise(r => setTimeout(r, 80));
         }
-      } else {
-        addLog(`ℹ️ Nenhum registro novo para inserir.`);
-      }
+      } else { addLog('ℹ️ Nenhum registro novo para inserir.'); }
 
-      // UPDATE duplicatas (se usuário escolheu)
       if (updateDuplicates && excelFile.toUpdate.length > 0) {
         addLog(`\n🔄 Atualizando ${excelFile.toUpdate.length} registro(s) existente(s)...`);
-        for (const { proc, procKey, payload } of excelFile.toUpdate) {
-          const updatePayload = { ...payload, updated_at: now };
+        for (const { propKey, payload } of excelFile.toUpdate) {
           const { error } = await supabase.from('formalizacoes')
-            .update(updatePayload).eq('PROCESSO', procKey);
-          if (error) {
-            addLog(`   ⚠️ Erro em ${proc}: ${error.message}`);
-          } else {
-            updated++;
-          }
+            .update({ ...payload, updated_at: now }).eq('PROPOSTA', propKey);
+          if (error) addLog(`   ⚠️ Erro em ${propKey}: ${error.message}`);
+          else updated++;
           await new Promise(r => setTimeout(r, 50));
         }
         addLog(`   ✅ ${updated} registro(s) atualizado(s).`);
@@ -728,50 +673,45 @@ export default function TabelaGerencialMaster() {
         addLog(`⏭️ ${skipped} duplicata(s) ignorada(s) (dados do banco preservados).`);
       }
 
-      addLog(`\n🎉 SINCRONIZAÇÃO CONCLUÍDA!`);
+      addLog('\n🎉 SINCRONIZAÇÃO CONCLUÍDA!');
       addLog(`   📥 Inseridos: ${inserted} | 📝 Atualizados: ${updated} | ⏭️ Ignorados: ${skipped}`);
-
       setTimeout(() => {
         notify('success', `Importação concluída: ${inserted} inseridos, ${updated} atualizados.`);
-        setNewModal(false);
-        setExcelFile(null);
-        setExcelDuplicates([]);
-        setExcelSyncLog([]);
-        setExcelSyncing(false);
-        fetchAllData();
+        setNewModal(false); setExcelFile(null); setExcelDuplicates([]);
+        setExcelSyncLog([]); setExcelSyncing(false); fetchAllData();
       }, 1500);
-
     } catch (err) {
       addLog(`❌ ERRO CRÍTICO: ${err.message}`);
       notify('error', 'Erro durante a importação.');
       setExcelSyncing(false);
     }
   };
-  // ─────────────────────────────────────────────────────────────────────────────
 
   const clearFilters = () => {
-    setFilters({ proposta: '', instrumento: 'Todos', ajuste: 'Todos', empenho: 'Todos', tecnico: 'Todos', uf: 'Todos', processo: '', entidade: '', ano: 'Todos', emptyCols: [], filledCols: [] });
+    setFilters({
+      proposta: '', instrumento: 'Todos', ajuste: 'Todos', empenho: 'Todos',
+      tecnico: 'Todos', uf: 'Todos', processo: '', entidade: '',
+      ano: 'Todos', tramitadoCgap: 'Todos', emptyCols: [], filledCols: [],
+    });
     setGlobalFilter('');
   };
 
   const hasFilters = filters.proposta || filters.instrumento !== 'Todos' || filters.ajuste !== 'Todos' ||
     filters.empenho !== 'Todos' || filters.tecnico !== 'Todos' || filters.uf !== 'Todos' ||
-    filters.processo || filters.entidade || filters.ano !== 'Todos' ||
+    filters.processo || filters.entidade || filters.ano !== 'Todos' || filters.tramitadoCgap !== 'Todos' ||
     filters.emptyCols.length || filters.filledCols.length || globalFilter;
 
   const toggleEmptyCol = col => setFilters(p => ({
-    ...p,
-    emptyCols: p.emptyCols.includes(col) ? p.emptyCols.filter(c => c !== col) : [...p.emptyCols, col],
+    ...p, emptyCols: p.emptyCols.includes(col) ? p.emptyCols.filter(c => c !== col) : [...p.emptyCols, col],
     filledCols: p.filledCols.filter(c => c !== col),
   }));
 
   const toggleFilledCol = col => setFilters(p => ({
-    ...p,
-    filledCols: p.filledCols.includes(col) ? p.filledCols.filter(c => c !== col) : [...p.filledCols, col],
+    ...p, filledCols: p.filledCols.includes(col) ? p.filledCols.filter(c => c !== col) : [...p.filledCols, col],
     emptyCols: p.emptyCols.filter(c => c !== col),
   }));
 
-  // ── Loading ──
+  // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading && !data.length) return (
     <>
       <style>{CSS}</style>
@@ -793,7 +733,9 @@ export default function TabelaGerencialMaster() {
       <div className="app">
 
         {/* ─── SIDEBAR ─── */}
-        <aside className={`sidebar ${sidebarOpen ? '' : 'sb-closed'}`}>
+        <aside className={`sidebar ${sidebarOpen ? 'sb-open' : 'sb-closed'}`}>
+
+          {/* Sidebar Header */}
           <div className="sb-head">
             <div className="sb-brand">
               <div className="sb-logo"><span>F</span></div>
@@ -804,13 +746,34 @@ export default function TabelaGerencialMaster() {
                 </div>
               )}
             </div>
-            <button className="sb-toggle" onClick={() => setSidebarOpen(p => !p)}>
-              {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+            <button
+              className="sb-toggle"
+              onClick={() => setSidebarOpen(p => !p)}
+              title={sidebarOpen ? 'Recolher painel' : 'Expandir painel'}
+            >
+              {sidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
             </button>
           </div>
 
+          {/* Collapsed state: icon buttons */}
+          {!sidebarOpen && (
+            <div className="sb-collapsed-icons">
+              <button className="sb-icon-action" title="Ir ao Dashboard" onClick={() => navigate('/dashboard')}>
+                <Home size={16} />
+              </button>
+              <button className="sb-icon-action" title="Expandir filtros" onClick={() => setSidebarOpen(true)}>
+                <SlidersHorizontal size={16} />
+              </button>
+              {hasFilters && (
+                <div className="sb-filter-dot" title="Filtros ativos" />
+              )}
+            </div>
+          )}
+
+          {/* Expanded state */}
           {sidebarOpen && (
             <>
+              {/* KPIs */}
               <div className="sb-kpis">
                 <div className="kpi-mini">
                   <span className="km-val">{stats.total.toLocaleString('pt-BR')}</span>
@@ -826,11 +789,12 @@ export default function TabelaGerencialMaster() {
                 </div>
               </div>
 
+              {/* Tabs */}
               <div className="sb-tabs">
                 {[
-                  { id: 'filters', icon: <Filter size={11} />, label: 'Filtros' },
+                  { id: 'filters', icon: <Filter size={11} />,       label: 'Filtros' },
                   { id: 'empty',   icon: <AlertOctagon size={11} />, label: 'Vazios' },
-                  { id: 'columns', icon: <Columns size={11} />, label: 'Colunas' },
+                  { id: 'columns', icon: <Columns size={11} />,       label: 'Colunas' },
                 ].map(t => (
                   <button key={t.id} className={`sb-tab ${activeTab === t.id ? 'active' : ''}`}
                     onClick={() => setActiveTab(t.id)}>
@@ -863,8 +827,7 @@ export default function TabelaGerencialMaster() {
                       <label className="fl"><Calendar size={9} /> Ano</label>
                       <div className="year-pills">
                         {ANOS.map(a => (
-                          <button key={a}
-                            className={`year-pill ${filters.ano === a ? 'active' : ''}`}
+                          <button key={a} className={`year-pill ${filters.ano === a ? 'active' : ''}`}
                             onClick={() => setFilters(p => ({ ...p, ano: a }))}>
                             {a}
                           </button>
@@ -884,9 +847,11 @@ export default function TabelaGerencialMaster() {
                       </div>
                     )}
 
+                    {/* FIX: Added TRAMITADO PARA CGAP filter */}
                     {[
                       { label: 'Instrumento', key: 'instrumento', opts: ['Todos', 'CONVÊNIO', 'TERMO DE FOMENTO', 'TERMO DE EXECUÇÃO DESCENTRALIZADA'] },
                       { label: 'Ajuste',      key: 'ajuste',      opts: ['Todos', 'PENDENTE', 'REALIZADO', 'NÃO SE APLICA'] },
+                      { label: 'Tramitado CGAP', key: 'tramitadoCgap', opts: ['Todos', 'SIM', 'NÃO', 'NÃO SE APLICA'] },
                       { label: 'Empenho',     key: 'empenho',     opts: ['Todos', 'SIM', 'NÃO'] },
                       { label: 'Técnico',     key: 'tecnico',     opts: ['Todos', ...SELECT_OPTIONS['TÉCNICO DE FORMALIZAÇÃO']] },
                       { label: 'UF',          key: 'uf',          opts: ['Todos', 'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'] },
@@ -960,6 +925,7 @@ export default function TabelaGerencialMaster() {
                 )}
               </div>
 
+              {/* Sidebar Footer */}
               <div className="sb-foot">
                 {hasFilters && (
                   <button className="clear-filters-btn" onClick={clearFilters}>
@@ -977,15 +943,39 @@ export default function TabelaGerencialMaster() {
           )}
         </aside>
 
-        {/* ─── MAIN ─── */}
+        {/* ─── MAIN CONTENT ─── */}
         <main className="main">
 
-          {/* KPI Bar */}
+          {/* ── TOP NAV BAR ── */}
+          <div className="topnav">
+            <button className="btn-dashboard" onClick={() => navigate('/')}>
+              <Home size={14} />
+              <span>Dashboard</span>
+            </button>
+            <div className="topnav-center">
+              <span className="topnav-title">Registro de Formalizações</span>
+            </div>
+            <div className="topnav-right">
+              {dirtyCount > 0 && (
+                <span className="dirty-badge">
+                  <Zap size={10} />{dirtyCount} não salva(s)
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* KPI Cards */}
           <div className="kpi-row">
             {[
               { icon: <BarChart2 size={18} />, val: stats.total.toLocaleString('pt-BR'), lbl: 'Total de Propostas', cls: 'blue' },
-              { icon: <AlertTriangle size={18} />, val: stats.pendentes, lbl: 'Ajustes Pendentes', sub: `${stats.total > 0 ? ((stats.pendentes / stats.total) * 100).toFixed(1) : 0}% do total`, cls: 'amber' },
-              { icon: <CheckCircle2 size={18} />, val: stats.realizados, lbl: 'Ajustes Realizados', sub: `${stats.total > 0 ? ((stats.realizados / stats.total) * 100).toFixed(1) : 0}% do total`, cls: 'green' },
+              {
+                icon: <AlertTriangle size={18} />, val: stats.pendentes, lbl: 'Ajustes Pendentes',
+                sub: `${stats.total > 0 ? ((stats.pendentes / stats.total) * 100).toFixed(1) : 0}% do total`, cls: 'amber',
+              },
+              {
+                icon: <CheckCircle2 size={18} />, val: stats.realizados, lbl: 'Ajustes Realizados',
+                sub: `${stats.total > 0 ? ((stats.realizados / stats.total) * 100).toFixed(1) : 0}% do total`, cls: 'green',
+              },
               { icon: <TrendingUp size={18} />, val: stats.valorTotal.toLocaleString('pt-BR', { notation: 'compact', style: 'currency', currency: 'BRL', maximumFractionDigits: 1 }), lbl: 'Valor Total em Repasse', cls: 'indigo' },
             ].map((k, i) => (
               <div key={i} className={`kpi-card kc-${k.cls}`}>
@@ -1005,23 +995,16 @@ export default function TabelaGerencialMaster() {
             {/* Toolbar */}
             <div className="toolbar">
               <div className="tl-left">
-                <h2 className="tcard-title">Registro de Formalizações</h2>
                 <span className="count-badge">{totalFiltered.toLocaleString('pt-BR')} registros</span>
                 {hasFilters && <span className="filter-badge"><Filter size={9} />Filtros ativos</span>}
-                {dirtyCount > 0 && <span className="dirty-badge"><Zap size={10} />{dirtyCount} não salva(s)</span>}
               </div>
               <div className="tl-right">
                 <div className="search-wrap">
                   <Search size={13} className="search-ico" />
-                  <input
-                    className="search-in"
-                    placeholder="Buscar em tudo..."
-                    value={globalFilter}
-                    onChange={e => setGlobalFilter(e.target.value)}
-                  />
+                  <input className="search-in" placeholder="Buscar em tudo..."
+                    value={globalFilter} onChange={e => setGlobalFilter(e.target.value)} />
                   {globalFilter && <button className="search-clr" onClick={() => setGlobalFilter('')}><X size={10} /></button>}
                 </div>
-
                 <button className="icon-btn" onClick={fetchAllData} title="Atualizar dados"><RefreshCw size={13} /></button>
                 <button className="icon-btn" onClick={exportToExcel} title="Exportar Excel"><Download size={13} /></button>
 
@@ -1035,14 +1018,12 @@ export default function TabelaGerencialMaster() {
                     <Trash2 size={12} />Excluir ({selectedRows.size})
                   </button>
                 )}
-
                 {dirtyCount > 0 && (
                   <button className="btn btn-save" onClick={handleSave} disabled={saving}>
                     {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}
                     Salvar {dirtyCount}
                   </button>
                 )}
-
                 <button className="btn btn-primary" onClick={() => {
                   setNewModal(true); setNewTab('manual');
                   setNewProposta(''); setExcelFile(null); setExcelError('');
@@ -1054,10 +1035,13 @@ export default function TabelaGerencialMaster() {
             </div>
 
             {/* Active filter pills */}
-            {(filters.emptyCols.length > 0 || filters.filledCols.length > 0 || filters.ano !== 'Todos') && (
+            {(filters.emptyCols.length > 0 || filters.filledCols.length > 0 || filters.ano !== 'Todos' || filters.tramitadoCgap !== 'Todos') && (
               <div className="active-pills">
                 {filters.ano !== 'Todos' && (
                   <span className="ap ap-blue">Ano: {filters.ano}<button onClick={() => setFilters(p => ({ ...p, ano: 'Todos' }))}><X size={8} /></button></span>
+                )}
+                {filters.tramitadoCgap !== 'Todos' && (
+                  <span className="ap ap-indigo">CGAP: {filters.tramitadoCgap}<button onClick={() => setFilters(p => ({ ...p, tramitadoCgap: 'Todos' }))}><X size={8} /></button></span>
                 )}
                 {filters.emptyCols.map(col => (
                   <span key={col} className="ap ap-amber">∅ {col}<button onClick={() => toggleEmptyCol(col)}><X size={8} /></button></span>
@@ -1165,10 +1149,9 @@ export default function TabelaGerencialMaster() {
           <div className="modal modal-lg">
             <h3 className="modal-title">Nova Proposta</h3>
             <p className="modal-desc">Cadastre manualmente ou importe a planilha <strong>Controle Geral de Formalização</strong>.</p>
-
             <div className="modal-tabs">
               {[
-                { id: 'manual', icon: <Hash size={11} />, label: 'Manual' },
+                { id: 'manual', icon: <Hash size={11} />,          label: 'Manual' },
                 { id: 'excel',  icon: <FileSpreadsheet size={11} />, label: 'Importar Excel' },
               ].map(t => (
                 <button key={t.id} className={`mtab ${newTab === t.id ? 'active' : ''}`}
@@ -1178,7 +1161,6 @@ export default function TabelaGerencialMaster() {
               ))}
             </div>
 
-            {/* MANUAL */}
             {newTab === 'manual' && (
               <>
                 <div className="notice ni-info">
@@ -1187,8 +1169,7 @@ export default function TabelaGerencialMaster() {
                 </div>
                 <div className="form-group">
                   <label className="form-lbl">Número da Proposta *</label>
-                  <input className="form-in" placeholder="024721/2025"
-                    value={newProposta} autoFocus
+                  <input className="form-in" placeholder="024721/2025" value={newProposta} autoFocus
                     onChange={e => setNewProposta(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleNewManual()} />
                 </div>
@@ -1201,7 +1182,6 @@ export default function TabelaGerencialMaster() {
               </>
             )}
 
-            {/* EXCEL IMPORT */}
             {newTab === 'excel' && (
               <>
                 {!excelSyncing && !excelFile && (
@@ -1209,9 +1189,8 @@ export default function TabelaGerencialMaster() {
                     <div className="notice ni-info">
                       <Bot size={14} />
                       <div>
-                        <strong>Importação inteligente:</strong> o sistema lê apenas as colunas mapeadas do arquivo
-                        (<em>Controle Geral de Formalização</em>), ignora colunas extras e fórmulas Excel,
-                        e detecta automaticamente duplicatas por PROCESSO.
+                        <strong>Importação inteligente:</strong> o sistema lê apenas as colunas mapeadas,
+                        ignora colunas extras e fórmulas, e detecta automaticamente duplicatas por PROPOSTA.
                       </div>
                     </div>
                     <div
@@ -1230,8 +1209,6 @@ export default function TabelaGerencialMaster() {
                     {excelError && <div className="notice ni-danger"><AlertCircle size={14} />{excelError}</div>}
                   </>
                 )}
-
-                {/* Análise do arquivo */}
                 {excelFile && !excelSyncing && (
                   <>
                     <div className="excel-analysis">
@@ -1242,55 +1219,34 @@ export default function TabelaGerencialMaster() {
                           <span className="ea-wsname">Aba: {excelFile.wsName}</span>
                         </div>
                       </div>
-
                       <div className="ea-stats">
-                        <div className="ea-stat ea-total">
-                          <span className="eas-val">{excelFile.total}</span>
-                          <span className="eas-lbl">Linhas válidas</span>
-                        </div>
-                        <div className="ea-stat ea-new">
-                          <span className="eas-val">{excelFile.toInsert.length}</span>
-                          <span className="eas-lbl">Novos registros</span>
-                        </div>
-                        <div className="ea-stat ea-dup">
-                          <span className="eas-val">{excelFile.toUpdate.length}</span>
-                          <span className="eas-lbl">Já existem no banco</span>
-                        </div>
+                        <div className="ea-stat ea-total"><span className="eas-val">{excelFile.total}</span><span className="eas-lbl">Linhas válidas</span></div>
+                        <div className="ea-stat ea-new"><span className="eas-val">{excelFile.toInsert.length}</span><span className="eas-lbl">Novos registros</span></div>
+                        <div className="ea-stat ea-dup"><span className="eas-val">{excelFile.toUpdate.length}</span><span className="eas-lbl">Já existem no banco</span></div>
                       </div>
-
                       {excelDuplicates.length > 0 && (
                         <div className="dup-section">
-                          <div className="dup-header">
-                            <AlertTriangle size={13} />
-                            <span>{excelDuplicates.length} registro(s) já existem no banco:</span>
-                          </div>
+                          <div className="dup-header"><AlertTriangle size={13} /><span>{excelDuplicates.length} registro(s) já existem no banco:</span></div>
                           <div className="dup-list">
-                            {excelDuplicates.slice(0, 8).map((d, i) => (
-                              <span key={i} className="dup-tag">{d.proc}</span>
-                            ))}
+                            {excelDuplicates.slice(0, 8).map((d, i) => <span key={i} className="dup-tag">{d.proc}</span>)}
                             {excelDuplicates.length > 8 && <span className="dup-more">+{excelDuplicates.length - 8} mais</span>}
                           </div>
                         </div>
                       )}
                     </div>
-
                     <div className="modal-acts" style={{ flexDirection: 'column', gap: 8 }}>
                       {excelFile.toInsert.length > 0 && (
-                        <button className="btn btn-primary" style={{ justifyContent: 'center' }}
-                          onClick={() => handleExcelSync(false)}>
-                          <Plus size={12} />
-                          Inserir apenas {excelFile.toInsert.length} novo(s) · ignorar duplicatas
+                        <button className="btn btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleExcelSync(false)}>
+                          <Plus size={12} />Inserir apenas {excelFile.toInsert.length} novo(s) · ignorar duplicatas
                         </button>
                       )}
                       {excelFile.toUpdate.length > 0 && (
-                        <button className="btn btn-amber" style={{ justifyContent: 'center' }}
-                          onClick={() => handleExcelSync(true)}>
-                          <RefreshCw size={12} />
-                          Inserir novos + atualizar {excelFile.toUpdate.length} duplicata(s)
+                        <button className="btn btn-amber" style={{ justifyContent: 'center' }} onClick={() => handleExcelSync(true)}>
+                          <RefreshCw size={12} />Inserir novos + atualizar {excelFile.toUpdate.length} duplicata(s)
                         </button>
                       )}
                       {excelFile.toInsert.length === 0 && excelFile.toUpdate.length === 0 && (
-                        <div className="notice ni-info"><Info size={14} />Todos os registros já existem no banco e nenhuma ação foi solicitada.</div>
+                        <div className="notice ni-info"><Info size={14} />Todos os registros já existem no banco.</div>
                       )}
                       <button className="btn btn-ghost" style={{ justifyContent: 'center' }}
                         onClick={() => { setExcelFile(null); setExcelDuplicates([]); setExcelError(''); }}>
@@ -1299,14 +1255,9 @@ export default function TabelaGerencialMaster() {
                     </div>
                   </>
                 )}
-
-                {/* Progresso da sincronização */}
                 {excelSyncing && (
                   <div className="sync-progress">
-                    <div className="sync-header">
-                      <Loader2 size={16} className="spin" />
-                      <span>Sincronizando com o banco de dados...</span>
-                    </div>
+                    <div className="sync-header"><Loader2 size={16} className="spin" /><span>Sincronizando com o banco de dados...</span></div>
                     <div className="sync-log" ref={syncLogRef}>
                       {excelSyncLog.map((entry, i) => (
                         <div key={i} className="sync-line">
@@ -1334,125 +1285,226 @@ export default function TabelaGerencialMaster() {
   );
 }
 
-// ─── CSS ─────────────────────────────────────────────────────────────────────
+// ─── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root{
-  --bg:#F0F2F7;
+  --bg:#EEF1F8;
   --surface:#FFFFFF;
-  --surface2:#F7F8FC;
-  --surface3:#EEF0F7;
-  --border:#E2E6F0;
-  --border2:#C8CEE0;
+  --surface2:#F5F7FC;
+  --surface3:#ECEEF6;
+  --border:#DDE2EF;
+  --border2:#BDC5DC;
 
-  --blue:#1D4ED8;
-  --blue-lt:#EFF4FF;
-  --blue-md:#BFCFFE;
-  --blue-dk:#1740C0;
+  --blue:#1A56DB;
+  --blue-lt:#EBF0FF;
+  --blue-md:#BAC8FF;
+  --blue-dk:#1447C5;
 
-  --green:#15803D;
-  --green-lt:#F0FDF4;
-  --green-md:#86EFAC;
+  --green:#0D7E47;
+  --green-lt:#EDFAF3;
+  --green-md:#6EE7A8;
 
-  --amber:#B45309;
-  --amber-lt:#FFFBEB;
-  --amber-md:#FCD34D;
+  --amber:#A65F00;
+  --amber-lt:#FFF8EA;
+  --amber-md:#F8C95A;
 
-  --red:#DC2626;
-  --red-lt:#FEF2F2;
-  --red-md:#FECACA;
+  --red:#C81B1B;
+  --red-lt:#FEF1F1;
+  --red-md:#FCAFAF;
 
-  --indigo:#4F46E5;
-  --indigo-lt:#EEF2FF;
-  --indigo-md:#C7D2FE;
+  --indigo:#3D35CC;
+  --indigo-lt:#EDEBFF;
+  --indigo-md:#C5C0F8;
 
-  --sky:#0284C7;
-  --sky-lt:#F0F9FF;
-  --sky-bd:#7DD3FC;
+  --sky:#0375C0;
+  --sky-lt:#EAF5FF;
+  --sky-bd:#71C3F7;
 
-  --violet:#7C3AED;
+  --violet:#6227C6;
 
-  --c1:#0A0E1A;
-  --c2:#2D3748;
-  --c3:#64748B;
-  --c4:#94A3B8;
-  --c5:#CBD5E1;
+  --c1:#0B0E1C;
+  --c2:#1E2A45;
+  --c3:#56657F;
+  --c4:#8898B3;
+  --c5:#C2CEDF;
 
-  --font:'Geist',system-ui,sans-serif;
-  --mono:'Geist Mono',monospace;
+  --font:'Plus Jakarta Sans',system-ui,sans-serif;
+  --mono:'JetBrains Mono',monospace;
 
   --r-xs:4px;
   --r-sm:8px;
   --r:12px;
   --r-lg:16px;
   --r-xl:20px;
-  --sh-xs:0 1px 2px rgba(0,0,0,.04);
-  --sh-sm:0 2px 8px rgba(0,0,0,.06);
-  --sh:0 4px 20px rgba(0,0,0,.08);
-  --sh-lg:0 20px 60px rgba(0,0,0,.18);
+  --sh-xs:0 1px 3px rgba(14,23,55,.05),0 1px 2px rgba(14,23,55,.04);
+  --sh-sm:0 2px 10px rgba(14,23,55,.07),0 1px 4px rgba(14,23,55,.05);
+  --sh:0 4px 24px rgba(14,23,55,.09),0 2px 8px rgba(14,23,55,.06);
+  --sh-lg:0 24px 64px rgba(14,23,55,.22),0 8px 24px rgba(14,23,55,.12);
+
+  --sidebar-w:275px;
+  --sidebar-w-closed:56px;
+  --topnav-h:48px;
 }
 
 html,body,#root{font-family:var(--font);background:var(--bg);height:100vh;overflow:hidden;color:var(--c1);font-size:13px;}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
-::-webkit-scrollbar-thumb:hover{background:var(--c5)}
+::-webkit-scrollbar-thumb:hover{background:var(--c4)}
 
+/* ── LAYOUT ── */
 .app{display:flex;height:100vh;overflow:hidden;}
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:16px;gap:14px;min-width:0;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 16px 14px 14px;gap:12px;min-width:0;background:var(--bg);}
 
-.sidebar{width:280px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .22s cubic-bezier(.4,0,.2,1);}
-.sidebar.sb-closed{width:54px;}
-.sb-head{padding:15px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.sb-brand{display:flex;align-items:center;gap:10px;}
-.sb-logo{width:36px;height:36px;border-radius:10px;flex-shrink:0;background:linear-gradient(145deg,#1D4ED8,#4F46E5);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(29,78,216,.35);}
-.sb-logo span{color:#fff;font-weight:700;font-size:17px;letter-spacing:-.03em;}
-.sb-name{font-size:13px;font-weight:700;color:var(--c1);letter-spacing:-.02em;}
-.sb-sub{font-size:10px;color:var(--c4);margin-top:2px;}
-.sb-toggle{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--c4);transition:all .14s;flex-shrink:0;}
+/* ── SIDEBAR ── */
+.sidebar{
+  flex-shrink:0;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  transition:width .25s cubic-bezier(.4,0,.2,1);
+  box-shadow:2px 0 12px rgba(14,23,55,.05);
+  position:relative;
+  z-index:20;
+}
+.sidebar.sb-open{width:var(--sidebar-w);}
+.sidebar.sb-closed{width:var(--sidebar-w-closed);}
+
+.sb-head{
+  padding:14px 12px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-shrink:0;
+  min-height:60px;
+}
+.sb-brand{display:flex;align-items:center;gap:10px;overflow:hidden;}
+.sb-logo{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(145deg,#1A56DB,#3D35CC);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 10px rgba(26,86,219,.4);
+}
+.sb-logo span{color:#fff;font-weight:800;font-size:16px;letter-spacing:-.04em;}
+.sb-name{font-size:13px;font-weight:700;color:var(--c1);letter-spacing:-.02em;white-space:nowrap;}
+.sb-sub{font-size:10px;color:var(--c4);margin-top:1px;white-space:nowrap;}
+
+.sb-toggle{
+  width:28px;height:28px;border-radius:8px;
+  border:1.5px solid var(--border);
+  background:var(--surface2);
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--c3);
+  transition:all .15s;
+  flex-shrink:0;
+}
 .sb-toggle:hover{background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
 
+/* Collapsed state icons */
+.sb-collapsed-icons{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  padding:10px 0;
+  position:relative;
+}
+.sb-icon-action{
+  width:36px;height:36px;
+  border-radius:10px;
+  border:1.5px solid var(--border);
+  background:var(--surface2);
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--c3);
+  transition:all .14s;
+}
+.sb-icon-action:hover{background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
+.sb-filter-dot{
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--indigo);
+  border:2px solid var(--surface);
+  position:absolute;top:12px;right:6px;
+}
+
 .sb-kpis{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
-.kpi-mini{flex:1;padding:12px 6px;text-align:center;border-right:1px solid var(--border);}
+.kpi-mini{flex:1;padding:11px 6px;text-align:center;border-right:1px solid var(--border);}
 .kpi-mini:last-child{border-right:none;}
-.km-val{display:block;font-size:18px;font-weight:700;color:var(--c1);letter-spacing:-.03em;}
-.km-lbl{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--c4);margin-top:2px;}
+.km-val{display:block;font-size:17px;font-weight:800;color:var(--c1);letter-spacing:-.04em;}
+.km-lbl{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--c4);margin-top:2px;font-weight:600;}
 .kpi-mini.warn .km-val{color:var(--amber);}
 .kpi-mini.ok .km-val{color:var(--green);}
 
-.sb-tabs{display:flex;gap:2px;padding:8px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;}
-.sb-tab{flex:1;padding:6px 2px;border:1px solid transparent;border-radius:var(--r-sm);font-size:10px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;color:var(--c3);background:transparent;transition:all .12s;}
+.sb-tabs{display:flex;gap:2px;padding:7px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.sb-tab{
+  flex:1;padding:6px 2px;
+  border:1.5px solid transparent;border-radius:var(--r-sm);
+  font-size:10px;font-weight:700;font-family:var(--font);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;
+  color:var(--c3);background:transparent;
+  transition:all .12s;
+}
 .sb-tab.active{background:var(--surface);color:var(--blue);border-color:var(--border);box-shadow:var(--sh-xs);}
 
 .sb-body{flex:1;overflow-y:auto;padding:10px;}
-.filter-group{display:flex;flex-direction:column;gap:1px;}
-.ff{margin-bottom:8px;}
-.fl{display:flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--c3);margin-bottom:4px;}
+.filter-group{display:flex;flex-direction:column;}
+.ff{margin-bottom:9px;}
+.fl{display:flex;align-items:center;gap:3px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--c3);margin-bottom:4px;}
 .fi-wrap{position:relative;display:flex;align-items:center;}
-.fi{width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);color:var(--c1);background:var(--surface2);outline:none;transition:border-color .14s,box-shadow .14s;}
-.fi:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff;}
+.fi{
+  width:100%;padding:7px 10px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  background:var(--surface2);outline:none;
+  transition:border-color .14s,box-shadow .14s;
+}
+.fi:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
 .fi::placeholder{color:var(--c5);}
 .fi-clear{position:absolute;right:7px;background:none;border:none;cursor:pointer;color:var(--c4);display:flex;padding:2px;border-radius:4px;}
 .fi-clear:hover{color:var(--c1);}
-.fs{width:100%;padding:7px 28px 7px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);color:var(--c1);background:var(--surface2);outline:none;appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:border-color .14s;}
-.fs:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);}
+.fs{
+  width:100%;padding:7px 28px 7px 10px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  background:var(--surface2);outline:none;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238898B3' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;
+  transition:border-color .14s;
+}
+.fs:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);}
 
 .year-pills{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
-.year-pill{padding:3px 11px;border:1.5px solid var(--border);border-radius:20px;font-size:11px;font-weight:600;font-family:var(--font);cursor:pointer;background:var(--surface2);color:var(--c3);transition:all .12s;}
-.year-pill.active{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 2px 6px rgba(29,78,216,.3);}
+.year-pill{
+  padding:3px 11px;border:1.5px solid var(--border);border-radius:20px;
+  font-size:10px;font-weight:700;font-family:var(--font);
+  cursor:pointer;background:var(--surface2);color:var(--c3);
+  transition:all .12s;
+}
+.year-pill.active{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 2px 8px rgba(26,86,219,.3);}
 
 .year-bdown{margin-bottom:8px;display:flex;flex-direction:column;gap:5px;}
 .yb-row{display:flex;align-items:center;gap:7px;}
-.yb-label{font-size:10px;font-weight:600;color:var(--c3);width:32px;flex-shrink:0;}
-.yb-track{flex:1;height:5px;background:var(--border);border-radius:10px;overflow:hidden;}
+.yb-label{font-size:10px;font-weight:700;color:var(--c3);width:34px;flex-shrink:0;}
+.yb-track{flex:1;height:4px;background:var(--border);border-radius:10px;overflow:hidden;}
 .yb-bar{height:100%;background:linear-gradient(90deg,var(--blue),var(--indigo));border-radius:10px;transition:width .5s ease;}
-.yb-cnt{font-size:10px;font-weight:700;color:var(--c2);width:28px;text-align:right;flex-shrink:0;}
+.yb-cnt{font-size:10px;font-weight:800;color:var(--c2);width:28px;text-align:right;flex-shrink:0;}
 
 .tab-hint{font-size:11px;color:var(--c3);line-height:1.6;margin-bottom:10px;}
-.ec-row{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:var(--r-sm);border:1.5px solid var(--border);margin-bottom:4px;background:var(--surface2);transition:all .12s;}
+.ec-row{
+  display:flex;align-items:center;gap:6px;
+  padding:7px 8px;border-radius:var(--r-sm);
+  border:1.5px solid var(--border);margin-bottom:4px;
+  background:var(--surface2);transition:all .12s;
+}
 .ec-row.ec-amber{border-color:var(--amber);background:var(--amber-lt);}
 .ec-row.ec-green{border-color:var(--green);background:var(--green-lt);}
 .ec-info{flex:1;min-width:0;}
@@ -1461,116 +1513,275 @@ html,body,#root{font-family:var(--font);background:var(--bg);height:100vh;overfl
 .ec-fill{height:100%;background:var(--green);border-radius:10px;}
 .ec-stat{font-size:9px;}
 .ec-btns{display:flex;gap:3px;flex-shrink:0;}
-.ec-btn{width:24px;height:24px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--c3);transition:all .12s;}
+.ec-btn{
+  width:24px;height:24px;border-radius:6px;
+  border:1.5px solid var(--border);background:var(--surface);
+  font-size:11px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--c3);transition:all .12s;
+}
 .ec-btn.ecb-amber{background:var(--amber);color:#fff;border-color:var(--amber);}
 .ec-btn.ecb-green{background:var(--green);color:#fff;border-color:var(--green);}
 
 .col-actions{display:flex;gap:5px;margin-bottom:8px;}
-.col-act-btn{flex:1;padding:5px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:10px;font-weight:600;font-family:var(--font);cursor:pointer;background:var(--surface2);color:var(--c3);transition:all .12s;}
+.col-act-btn{
+  flex:1;padding:5px;border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:10px;font-weight:700;font-family:var(--font);
+  cursor:pointer;background:var(--surface2);color:var(--c3);transition:all .12s;
+}
 .col-act-btn:hover{background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
-.col-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface2);margin-bottom:3px;}
+.col-row{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 8px;border-radius:var(--r-sm);
+  border:1.5px solid var(--border);background:var(--surface2);margin-bottom:3px;
+}
 .col-name{flex:1;font-size:10px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.col-toggle{padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;gap:3px;font-size:10px;color:var(--c3);transition:all .12s;}
+.col-toggle{
+  padding:4px 8px;border-radius:6px;
+  border:1.5px solid var(--border);background:var(--surface);
+  cursor:pointer;display:flex;align-items:center;gap:3px;
+  font-size:10px;color:var(--c3);transition:all .12s;
+}
 .col-toggle.ct-visible{color:var(--blue);border-color:var(--blue-md);background:var(--blue-lt);}
 .col-toggle.ct-hidden{color:var(--c5);}
 
 .sb-foot{padding:10px;border-top:1px solid var(--border);flex-shrink:0;}
-.clear-filters-btn{width:100%;padding:8px;margin-bottom:8px;background:var(--red-lt);color:var(--red);border:1.5px solid var(--red-md);border-radius:var(--r-sm);font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:background .12s;}
+.clear-filters-btn{
+  width:100%;padding:7px;margin-bottom:8px;
+  background:var(--red-lt);color:var(--red);
+  border:1.5px solid var(--red-md);border-radius:var(--r-sm);
+  font-size:11px;font-weight:700;font-family:var(--font);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background .12s;
+}
 .clear-filters-btn:hover{background:#FEE2E2;}
 .sb-count-label{font-size:11px;text-align:center;color:var(--c4);}
-.scl-filtered{font-weight:700;color:var(--blue);}
+.scl-filtered{font-weight:800;color:var(--blue);}
 .scl-total{font-weight:700;color:var(--c2);}
 
-.kpi-row{display:flex;gap:12px;flex-shrink:0;}
-.kpi-card{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;display:flex;align-items:center;gap:14px;border-left:4px solid transparent;box-shadow:var(--sh-xs);transition:transform .14s,box-shadow .14s;}
+/* ── TOP NAV ── */
+.topnav{
+  display:flex;align-items:center;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:6px 10px;
+  height:var(--topnav-h);
+  flex-shrink:0;
+  box-shadow:var(--sh-xs);
+  gap:10px;
+}
+
+.btn-dashboard{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 14px;
+  background:linear-gradient(145deg,var(--blue),var(--indigo));
+  color:#fff;
+  border:none;border-radius:var(--r);
+  font-size:12px;font-weight:700;font-family:var(--font);
+  cursor:pointer;
+  transition:all .15s;
+  box-shadow:0 2px 10px rgba(26,86,219,.35);
+  white-space:nowrap;
+  flex-shrink:0;
+}
+.btn-dashboard:hover{
+  transform:translateY(-1px);
+  box-shadow:0 4px 16px rgba(26,86,219,.45);
+  filter:brightness(1.08);
+}
+.btn-dashboard:active{transform:translateY(0);}
+
+.topnav-center{flex:1;display:flex;align-items:center;justify-content:center;}
+.topnav-title{font-size:13px;font-weight:700;color:var(--c2);letter-spacing:-.02em;}
+.topnav-right{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:80px;justify-content:flex-end;}
+
+/* ── KPI ROW ── */
+.kpi-row{display:flex;gap:10px;flex-shrink:0;}
+.kpi-card{
+  flex:1;min-width:0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:14px;
+  display:flex;align-items:center;gap:12px;
+  border-left:3px solid transparent;
+  box-shadow:var(--sh-xs);
+  transition:transform .14s,box-shadow .14s;
+}
 .kpi-card:hover{transform:translateY(-2px);box-shadow:var(--sh-sm);}
 .kc-blue{border-left-color:var(--blue);}
 .kc-amber{border-left-color:var(--amber);}
 .kc-green{border-left-color:var(--green);}
 .kc-indigo{border-left-color:var(--indigo);}
-.kc-icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.kc-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .kc-blue .kc-icon{background:var(--blue-lt);color:var(--blue);}
 .kc-amber .kc-icon{background:var(--amber-lt);color:var(--amber);}
 .kc-green .kc-icon{background:var(--green-lt);color:var(--green);}
 .kc-indigo .kc-icon{background:var(--indigo-lt);color:var(--indigo);}
-.kc-val{font-size:24px;font-weight:700;color:var(--c1);letter-spacing:-.04em;line-height:1;}
-.kc-lbl{font-size:11px;font-weight:500;color:var(--c3);margin-top:4px;}
-.kc-sub{font-size:10px;color:var(--c4);margin-top:2px;}
+.kc-val{font-size:22px;font-weight:800;color:var(--c1);letter-spacing:-.05em;line-height:1;}
+.kc-lbl{font-size:10px;font-weight:600;color:var(--c3);margin-top:3px;}
+.kc-sub{font-size:9px;color:var(--c4);margin-top:2px;}
 
-.tcard{flex:1;min-height:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sh-xs);}
+/* ── TABLE CARD ── */
+.tcard{
+  flex:1;min-height:0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  box-shadow:var(--sh-xs);
+}
 
-.toolbar{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;flex-shrink:0;}
-.tl-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.tcard-title{font-size:14px;font-weight:700;color:var(--c1);letter-spacing:-.02em;}
-.count-badge{font-size:11px;font-weight:700;background:var(--blue-lt);color:var(--blue);border:1.5px solid var(--blue-md);border-radius:20px;padding:2px 10px;}
-.filter-badge{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:var(--indigo-lt);color:var(--indigo);border:1.5px solid var(--indigo-md);border-radius:20px;padding:2px 10px;}
-.dirty-badge{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:var(--amber-lt);color:var(--amber);border:1.5px solid var(--amber-md);border-radius:20px;padding:2px 10px;animation:pulse 2s infinite;}
+.toolbar{
+  padding:10px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:8px;flex-shrink:0;
+  background:var(--surface2);
+}
+.tl-left{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.tl-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+
+.count-badge{
+  font-size:11px;font-weight:700;
+  background:var(--blue-lt);color:var(--blue);
+  border:1.5px solid var(--blue-md);border-radius:20px;
+  padding:2px 10px;
+}
+.filter-badge{
+  display:flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:700;
+  background:var(--indigo-lt);color:var(--indigo);
+  border:1.5px solid var(--indigo-md);border-radius:20px;padding:2px 10px;
+}
+.dirty-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:700;
+  background:var(--amber-lt);color:var(--amber);
+  border:1.5px solid var(--amber-md);border-radius:20px;padding:2px 10px;
+  animation:pulse 2s infinite;
+}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}
 
-.tl-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .search-wrap{position:relative;display:flex;align-items:center;}
 .search-ico{position:absolute;left:10px;color:var(--c4);pointer-events:none;}
-.search-in{padding:8px 30px 8px 32px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);color:var(--c1);width:230px;outline:none;background:var(--surface2);transition:border-color .14s,box-shadow .14s;}
-.search-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.08);background:#fff;width:270px;}
+.search-in{
+  padding:7px 30px 7px 32px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  width:220px;outline:none;background:var(--surface);
+  transition:border-color .14s,box-shadow .14s,width .2s;
+}
+.search-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.08);background:#fff;width:260px;}
 .search-in::placeholder{color:var(--c4);}
 .search-clr{position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--c4);display:flex;padding:2px;border-radius:4px;}
 .search-clr:hover{color:var(--c1);}
 
-.icon-btn{padding:8px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--surface);cursor:pointer;color:var(--c2);display:flex;align-items:center;transition:all .12s;}
+.icon-btn{
+  padding:7px;border:1.5px solid var(--border);border-radius:var(--r-sm);
+  background:var(--surface);cursor:pointer;color:var(--c2);
+  display:flex;align-items:center;transition:all .12s;
+}
 .icon-btn:hover{background:var(--surface2);border-color:var(--border2);}
 
-.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:var(--r-sm);font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;border:1.5px solid transparent;transition:all .14s;}
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 13px;border-radius:var(--r-sm);
+  font-size:12px;font-weight:700;font-family:var(--font);
+  cursor:pointer;border:1.5px solid transparent;
+  transition:all .14s;
+}
 .btn-primary{background:var(--blue);color:#fff;border-color:var(--blue);}
 .btn-primary:hover{background:var(--blue-dk);}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed;}
 .btn-save{background:var(--green);color:#fff;border-color:var(--green);}
-.btn-save:hover{background:#136835;}
+.btn-save:hover{background:#0A6E3C;}
 .btn-save:disabled{opacity:.5;cursor:not-allowed;}
 .btn-danger{background:var(--red);color:#fff;border-color:var(--red);}
-.btn-danger:hover{background:#B91C1C;}
+.btn-danger:hover{background:#A61818;}
 .btn-success{background:var(--green);color:#fff;border-color:var(--green);}
-.btn-success:hover{background:#136835;}
+.btn-success:hover{background:#0A6E3C;}
 .btn-ghost{background:var(--surface2);color:var(--c2);border-color:var(--border);}
 .btn-ghost:hover{background:var(--border);}
 .btn-del-sel{background:var(--red-lt);color:var(--red);border-color:var(--red-md);}
 .btn-del-sel:hover{background:#FEE2E2;}
-.btn-amber{background:#D97706;color:#fff;border-color:#D97706;}
-.btn-amber:hover{background:#B45309;}
+.btn-amber{background:#C47000;color:#fff;border-color:#C47000;}
+.btn-amber:hover{background:#A65F00;}
 
-.active-pills{padding:7px 16px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;background:var(--surface2);flex-shrink:0;}
-.ap{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;border-radius:20px;padding:3px 9px;border:1.5px solid transparent;}
+.active-pills{
+  padding:7px 14px;border-bottom:1px solid var(--border);
+  display:flex;gap:5px;flex-wrap:wrap;
+  background:var(--surface2);flex-shrink:0;
+}
+.ap{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:700;border-radius:20px;
+  padding:3px 9px;border:1.5px solid transparent;
+}
 .ap button{display:flex;align-items:center;border:none;background:none;cursor:pointer;opacity:.6;padding:0;}
 .ap button:hover{opacity:1;}
 .ap-blue{background:var(--blue-lt);color:var(--blue);border-color:var(--blue-md);}
 .ap-amber{background:var(--amber-lt);color:var(--amber);border-color:var(--amber-md);}
 .ap-green{background:var(--green-lt);color:var(--green);border-color:var(--green-md);}
+.ap-indigo{background:var(--indigo-lt);color:var(--indigo);border-color:var(--indigo-md);}
 
+/* ── TABLE ── */
 .tscroll{flex:1;overflow:auto;}
 table{width:100%;border-collapse:collapse;}
-thead th{position:sticky;top:0;z-index:10;background:var(--surface2);padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--c3);border-bottom:2px solid var(--border);white-space:nowrap;user-select:none;}
+thead th{
+  position:sticky;top:0;z-index:10;
+  background:var(--surface2);
+  padding:9px 12px;
+  text-align:left;
+  font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--c3);
+  border-bottom:2px solid var(--border);
+  white-space:nowrap;user-select:none;
+}
 thead th.sortable{cursor:pointer;transition:background .1s;}
 thead th.sortable:hover{background:var(--blue-lt);color:var(--blue);}
 thead th.th-bot{color:var(--sky);background:var(--sky-lt);}
-thead th.th-bot:hover{background:#E0F2FE;}
-thead th.th-aud{color:var(--violet);background:#F5F3FF;}
+thead th.th-bot:hover{background:#DCEFFE;}
+thead th.th-aud{color:var(--violet);background:#F0ECFF;}
 .th-inner{display:flex;align-items:center;gap:5px;}
 .hdr-aud{display:flex;align-items:center;gap:5px;}
 .sort-ico{margin-left:2px;opacity:.4;}
 .sort-neutral{opacity:.2;}
-.robo-chip{display:inline-flex;align-items:center;gap:2px;font-size:8px;font-weight:700;background:var(--sky-lt);color:var(--sky);border:1px solid var(--sky-bd);border-radius:4px;padding:1px 4px;}
+.robo-chip{
+  display:inline-flex;align-items:center;gap:2px;
+  font-size:8px;font-weight:800;
+  background:var(--sky-lt);color:var(--sky);
+  border:1px solid var(--sky-bd);border-radius:4px;padding:1px 4px;
+}
 
-tbody tr{border-bottom:1px solid #F1F5F9;transition:background .07s;}
-tbody tr:hover{background:#F7F9FE;}
-tbody tr.row-stripe{background:#FAFBFC;}
+tbody tr{border-bottom:1px solid #EDF0F8;transition:background .07s;}
+tbody tr:hover{background:#F4F6FD;}
+tbody tr.row-stripe{background:#FAFBFF;}
 tbody tr.row-sel{background:var(--blue-lt)!important;}
-tbody td{padding:8px 12px;vertical-align:middle;}
+tbody td{padding:7px 12px;vertical-align:middle;}
 
 .empty-dash{color:var(--c5);font-size:11px;}
-.dirty-dot{position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:var(--amber);border:2px solid #fff;flex-shrink:0;}
+.dirty-dot{
+  position:absolute;top:2px;right:2px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--amber);border:2px solid #fff;
+  flex-shrink:0;
+}
 
 .sel-container{position:relative;display:inline-flex;align-items:center;}
-.cell-select{padding:5px 26px 5px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:11px;font-weight:500;font-family:var(--font);color:var(--c1);background:#fff;cursor:pointer;outline:none;appearance:none;min-width:130px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;transition:border-color .12s,box-shadow .12s;}
-.cell-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.12);}
+.cell-select{
+  padding:5px 26px 5px 10px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:11px;font-weight:600;font-family:var(--font);
+  color:var(--c1);background:#fff;cursor:pointer;outline:none;appearance:none;
+  min-width:130px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%238898B3' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center;
+  transition:border-color .12s,box-shadow .12s;
+}
+.cell-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.12);}
 .cell-select:hover{border-color:var(--border2);}
 .cell-select.sel-green{background-color:var(--green-lt);color:var(--green);border-color:var(--green-md);font-weight:700;}
 .cell-select.sel-red{background-color:var(--red-lt);color:var(--red);border-color:var(--red-md);font-weight:700;}
@@ -1579,17 +1790,27 @@ tbody td{padding:8px 12px;vertical-align:middle;}
 .cell-select.sel-empty{border-color:var(--red-md);background:var(--red-lt);}
 .sel-container.sel-dirty .cell-select{border-color:var(--amber)!important;}
 
-.txt-cell{display:flex;align-items:center;gap:5px;cursor:pointer;padding:5px 7px;border-radius:var(--r-sm);border:1.5px solid transparent;min-width:80px;transition:all .12s;position:relative;}
+.txt-cell{
+  display:flex;align-items:center;gap:5px;cursor:pointer;
+  padding:5px 7px;border-radius:var(--r-sm);
+  border:1.5px solid transparent;min-width:80px;
+  transition:all .12s;position:relative;
+}
 .txt-cell:hover{border-color:var(--border);background:var(--surface2);}
 .tc-value{font-size:12px;color:var(--c1);flex:1;word-break:break-word;}
 .tc-placeholder{font-size:11px;color:var(--c5);font-style:italic;flex:1;}
 .tc-pencil{color:var(--c5);flex-shrink:0;opacity:0;transition:opacity .12s;}
 .txt-cell:hover .tc-pencil{opacity:1;}
 .txt-cell.tc-dirty{border-color:var(--amber)!important;background:var(--amber-lt)!important;}
-.txt-cell.tc-empty{border-color:#FDA29B;background:#FFF8F7;}
+.txt-cell.tc-empty{border-color:#FAB0A8;background:#FFF6F5;}
 
 .edit-active{display:flex;align-items:center;gap:4px;}
-.edit-input{padding:5px 9px;border:2px solid var(--blue);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);color:var(--c1);outline:none;background:#fff;min-width:110px;box-shadow:0 0 0 3px rgba(29,78,216,.12);}
+.edit-input{
+  padding:5px 9px;border:2px solid var(--blue);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);color:var(--c1);
+  outline:none;background:#fff;min-width:110px;
+  box-shadow:0 0 0 3px rgba(26,86,219,.12);
+}
 .edit-actions{display:flex;gap:3px;}
 .ea-btn{width:24px;height:24px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s;}
 .ea-ok{background:var(--green-lt);color:var(--green);}
@@ -1597,71 +1818,137 @@ tbody td{padding:8px 12px;vertical-align:middle;}
 .ea-no{background:var(--red-lt);color:var(--red);}
 .ea-no:hover{background:var(--red-md);}
 
-.inst-tag{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.01em;}
+.inst-tag{
+  display:inline-flex;align-items:center;padding:3px 10px;
+  border-radius:20px;font-size:10px;font-weight:700;
+  white-space:nowrap;letter-spacing:.01em;
+}
 .it-conv{background:var(--blue-lt);color:var(--blue);}
 .it-fom{background:var(--green-lt);color:var(--green);}
 .it-ted{background:var(--indigo-lt);color:var(--indigo);}
 
-.cell-robo{font-size:11px;color:var(--sky);display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cell-robo{
+  font-size:11px;color:var(--sky);
+  display:block;max-width:200px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 
 .audit-cell{display:flex;flex-direction:column;gap:3px;}
 .aud-ts{font-size:10px;color:var(--violet);font-family:var(--mono);}
-.aud-col{display:inline-flex;font-size:9px;font-weight:700;background:#F5F3FF;color:var(--violet);border:1px solid #DDD6FE;border-radius:12px;padding:1px 7px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.aud-col{
+  display:inline-flex;font-size:9px;font-weight:700;
+  background:#EDE9FF;color:var(--violet);
+  border:1px solid #C5BCFC;border-radius:12px;
+  padding:1px 7px;max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 
-.del-btn{opacity:0;padding:6px;background:none;border:none;color:var(--c4);cursor:pointer;border-radius:7px;display:flex;align-items:center;transition:opacity .12s,background .12s,color .12s;}
+.del-btn{
+  opacity:0;padding:5px;
+  background:none;border:none;color:var(--c4);
+  cursor:pointer;border-radius:7px;
+  display:flex;align-items:center;
+  transition:opacity .12s,background .12s,color .12s;
+}
 tbody tr:hover .del-btn{opacity:1;}
 .del-btn:hover{background:var(--red-lt);color:var(--red);}
 
-.cb{width:15px;height:15px;cursor:pointer;accent-color:var(--blue);}
+.cb{width:14px;height:14px;cursor:pointer;accent-color:var(--blue);}
 
-.empty-state{text-align:center;padding:70px 20px;}
-.es-icon{font-size:36px;margin-bottom:12px;}
+.empty-state{text-align:center;padding:60px 20px;}
+.es-icon{font-size:34px;margin-bottom:12px;}
 .es-title{font-size:15px;font-weight:700;color:var(--c1);margin-bottom:6px;}
 .es-sub{font-size:13px;color:var(--c3);}
 
-.tfoot{padding:11px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface2);}
+/* ── PAGINATION ── */
+.tfoot{
+  padding:9px 14px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;background:var(--surface2);
+}
 .page-info{font-size:12px;color:var(--c3);}
-.page-info strong{color:var(--c1);}
-.page-ctrl{display:flex;align-items:center;gap:8px;}
-.pg-lbl{font-size:11px;color:var(--c4);font-weight:600;}
-.pg-sel{padding:5px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:var(--font);background:#fff;cursor:pointer;outline:none;color:var(--c1);}
-.pg-btn{padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-weight:600;background:#fff;color:var(--c2);cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .12s;font-family:var(--font);}
+.page-info strong{color:var(--c1);font-weight:700;}
+.page-ctrl{display:flex;align-items:center;gap:7px;}
+.pg-lbl{font-size:10px;color:var(--c4);font-weight:700;}
+.pg-sel{
+  padding:5px 8px;border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-family:var(--font);background:#fff;cursor:pointer;outline:none;color:var(--c1);
+}
+.pg-btn{
+  padding:5px 11px;border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-size:12px;font-weight:600;background:#fff;color:var(--c2);
+  cursor:pointer;display:flex;align-items:center;gap:4px;
+  transition:all .12s;font-family:var(--font);
+}
 .pg-btn:hover:not(:disabled){background:var(--blue);color:#fff;border-color:var(--blue);}
 .pg-btn:disabled{opacity:.3;cursor:not-allowed;}
 .pg-btn-next{background:var(--blue);color:#fff;border-color:var(--blue);}
 .pg-btn-next:hover:not(:disabled){background:var(--blue-dk);}
 .pg-pages{font-size:12px;color:var(--c2);font-weight:600;padding:0 4px;}
 
-.overlay{position:fixed;inset:0;z-index:400;background:rgba(10,14,26,.65);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px;}
-.modal{background:var(--surface);border-radius:var(--r-xl);padding:28px;width:100%;max-width:460px;box-shadow:var(--sh-lg);animation:mIn .22s cubic-bezier(.34,1.56,.64,1);}
+/* ── MODALS ── */
+.overlay{
+  position:fixed;inset:0;z-index:400;
+  background:rgba(11,14,28,.65);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.modal{
+  background:var(--surface);border-radius:var(--r-xl);
+  padding:28px;width:100%;max-width:460px;
+  box-shadow:var(--sh-lg);
+  animation:mIn .22s cubic-bezier(.34,1.56,.64,1);
+}
 .modal.modal-lg{max-width:580px;}
-@keyframes mIn{from{opacity:0;transform:scale(.92) translateY(14px)}}
+@keyframes mIn{from{opacity:0;transform:scale(.93) translateY(16px)}}
 
-.modal-icon{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;}
+.modal-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
 .mi-red{background:var(--red-lt);color:var(--red);}
 .mi-blue{background:var(--blue-lt);color:var(--blue);}
-.modal-title{font-size:18px;font-weight:700;text-align:center;color:var(--c1);margin-bottom:8px;letter-spacing:-.03em;}
-.modal-desc{font-size:13px;color:var(--c3);text-align:center;line-height:1.7;margin-bottom:24px;}
+.modal-title{font-size:18px;font-weight:800;text-align:center;color:var(--c1);margin-bottom:8px;letter-spacing:-.03em;}
+.modal-desc{font-size:13px;color:var(--c3);text-align:center;line-height:1.7;margin-bottom:22px;}
 .modal-desc strong{color:var(--c1);}
 .modal-acts{display:flex;gap:8px;margin-top:20px;}
-.modal-acts .btn{flex:1;justify-content:center;padding:11px;font-size:13px;}
+.modal-acts .btn{flex:1;justify-content:center;padding:10px;font-size:13px;}
 
-.modal-tabs{display:flex;background:var(--surface2);border-radius:var(--r);padding:3px;margin-bottom:20px;border:1.5px solid var(--border);}
-.mtab{flex:1;padding:9px;border:none;border-radius:9px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;background:transparent;color:var(--c3);display:flex;align-items:center;justify-content:center;gap:6px;transition:all .14s;}
-.mtab.active{background:#fff;color:var(--c1);box-shadow:0 1px 5px rgba(0,0,0,.1);}
+.modal-tabs{
+  display:flex;background:var(--surface2);border-radius:var(--r);
+  padding:3px;margin-bottom:20px;border:1.5px solid var(--border);
+}
+.mtab{
+  flex:1;padding:8px;border:none;border-radius:9px;
+  font-size:12px;font-weight:700;font-family:var(--font);
+  cursor:pointer;background:transparent;color:var(--c3);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .14s;
+}
+.mtab.active{background:#fff;color:var(--c1);box-shadow:0 1px 6px rgba(0,0,0,.1);}
 
-.notice{border-radius:var(--r);padding:12px 14px;display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.6;margin-bottom:16px;}
+.notice{
+  border-radius:var(--r);padding:12px 14px;
+  display:flex;align-items:flex-start;gap:10px;
+  font-size:12px;line-height:1.6;margin-bottom:16px;
+}
 .notice svg{flex-shrink:0;margin-top:1px;}
 .ni-info{background:var(--blue-lt);border:1.5px solid var(--blue-md);color:var(--blue);}
 .ni-danger{background:var(--red-lt);border:1.5px solid var(--red-md);color:var(--red);}
 
 .form-group{margin-bottom:16px;}
-.form-lbl{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--c2);margin-bottom:6px;}
-.form-in{width:100%;padding:11px 13px;border:2px solid var(--border);border-radius:var(--r);font-size:14px;font-family:var(--font);color:var(--c1);background:var(--surface2);outline:none;transition:border-color .14s,box-shadow .14s;}
-.form-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff;}
+.form-lbl{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--c2);margin-bottom:6px;}
+.form-in{
+  width:100%;padding:11px 13px;
+  border:2px solid var(--border);border-radius:var(--r);
+  font-size:14px;font-family:var(--font);color:var(--c1);
+  background:var(--surface2);outline:none;
+  transition:border-color .14s,box-shadow .14s;
+}
+.form-in:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
 .form-in::placeholder{color:var(--c4);}
 
-.dropzone{border:2px dashed var(--border2);border-radius:var(--r-lg);padding:32px 20px;text-align:center;cursor:pointer;transition:all .16s;background:var(--surface2);margin-bottom:16px;}
+.dropzone{
+  border:2px dashed var(--border2);border-radius:var(--r-lg);
+  padding:30px 20px;text-align:center;cursor:pointer;
+  transition:all .16s;background:var(--surface2);margin-bottom:16px;
+}
 .dropzone:hover,.dropzone.dz-over{border-color:var(--blue);background:var(--blue-lt);}
 .dz-ico{color:var(--c4);margin:0 auto 12px;display:block;}
 .dz-text{font-size:13px;font-weight:600;color:var(--c2);}
@@ -1677,11 +1964,10 @@ tbody tr:hover .del-btn{opacity:1;}
 .ea-total{background:var(--surface2);}
 .ea-new{background:var(--green-lt);}
 .ea-dup{background:var(--amber-lt);}
-.eas-val{display:block;font-size:22px;font-weight:700;letter-spacing:-.04em;color:var(--c1);}
+.eas-val{display:block;font-size:22px;font-weight:800;letter-spacing:-.04em;color:var(--c1);}
 .ea-new .eas-val{color:var(--green);}
 .ea-dup .eas-val{color:var(--amber);}
 .eas-lbl{display:block;font-size:10px;font-weight:600;color:var(--c3);margin-top:3px;}
-
 .dup-section{padding:12px 16px;}
 .dup-header{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--amber);margin-bottom:8px;}
 .dup-list{display:flex;flex-wrap:wrap;gap:4px;}
@@ -1690,24 +1976,43 @@ tbody tr:hover .del-btn{opacity:1;}
 
 .sync-progress{border:1.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;}
 .sync-header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--c1);}
-.sync-log{height:180px;overflow-y:auto;padding:12px;background:#0A0E1A;display:flex;flex-direction:column;gap:4px;}
+.sync-log{height:180px;overflow-y:auto;padding:12px;background:#080B18;display:flex;flex-direction:column;gap:4px;}
 .sync-line{display:flex;gap:8px;font-family:var(--mono);font-size:11px;}
-.sync-ts{color:#475569;flex-shrink:0;}
-.sync-msg{color:#67E8F9;}
+.sync-ts{color:#3D4F70;flex-shrink:0;}
+.sync-msg{color:#5EEAD4;}
 
-.toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:14px 18px;border-radius:var(--r);display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;box-shadow:var(--sh-lg);animation:tIn .25s cubic-bezier(.34,1.56,.64,1);max-width:380px;}
-.t-success{background:#0A0E1A;color:#fff;}
-.t-error  {background:var(--red);color:#fff;}
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:20px;right:20px;z-index:999;
+  padding:13px 18px;border-radius:var(--r);
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:600;
+  box-shadow:var(--sh-lg);
+  animation:tIn .25s cubic-bezier(.34,1.56,.64,1);
+  max-width:380px;
+}
+.t-success{background:#0B0E1C;color:#fff;}
+.t-error{background:var(--red);color:#fff;}
 @keyframes tIn{from{opacity:0;transform:translateY(12px) scale(.95)}}
 
-.load-screen{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--bg);}
+/* ── LOADING ── */
+.load-screen{
+  height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:16px;background:var(--bg);
+}
 .load-brand{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
-.load-logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(145deg,#1D4ED8,#4F46E5);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(29,78,216,.4);}
-.load-logo span{color:#fff;font-weight:700;font-size:22px;letter-spacing:-.03em;}
-.load-title{font-size:18px;font-weight:700;color:var(--c1);letter-spacing:-.03em;}
+.load-logo{
+  width:44px;height:44px;border-radius:13px;
+  background:linear-gradient(145deg,#1A56DB,#3D35CC);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(26,86,219,.4);
+}
+.load-logo span{color:#fff;font-weight:800;font-size:22px;letter-spacing:-.04em;}
+.load-title{font-size:18px;font-weight:800;color:var(--c1);letter-spacing:-.03em;}
 .load-ring{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg)}}
-.load-label{font-size:11px;font-weight:700;color:var(--c4);text-transform:uppercase;letter-spacing:.1em;}
+.load-label{font-size:11px;font-weight:800;color:var(--c4);text-transform:uppercase;letter-spacing:.1em;}
 .load-track{width:200px;height:4px;background:var(--border);border-radius:10px;overflow:hidden;}
 .load-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--indigo));border-radius:10px;transition:width .3s ease;}
 
