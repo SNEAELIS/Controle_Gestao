@@ -1282,7 +1282,7 @@ const load = useCallback(async () => {
   setProg(0);
 
   try {
-    const response = await fetch('http://localhost:7890/api/dados');
+    const response = await fetch('https://sneaelis-bi-app.onrender.com/api/dados');
     if (!response.ok) throw new Error('Erro ao conectar com o servidor de dados.');
     
     const jsonData = await response.json();
