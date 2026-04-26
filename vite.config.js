@@ -17,15 +17,21 @@ export default defineConfig({
   optimizeDeps: {
     include: ['jspdf', 'jspdf-autotable'],
   },
-  // --- ADICIONE O TRECHO ABAIXO ---
   server: {
     proxy: {
-      // Cria o túnel para o Supabase ignorar o bloqueio de rede
-      '/api/supabase-proxy': {
-        target: 'https://dompaukvvwtjuszvpssu.supabase.co',
+      // Proxy para Autenticação Microsoft (OAuth2)
+      '/ms-login': {
+        target: 'https://login.microsoftonline.com',
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/api\/supabase-proxy/, ''),
+        rewrite: (path) => path.replace(/^\/ms-login/, ''),
+      },
+      // Proxy para Microsoft Graph API (Arquivos/SharePoint)
+      '/ms-graph': {
+        target: 'https://graph.microsoft.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/ms-graph/, ''),
       },
     },
   },

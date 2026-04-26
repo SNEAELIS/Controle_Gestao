@@ -1247,37 +1247,91 @@ export default function DashboardSneaElis() {
   const [tblFlt,   setTblFlt]   = useState('');
 
   // ── Carregar dados ──────────────────────────────────────────
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      let all = [], from = 0, ps = 1000;
-      while (true) {
-        const { data: chunk, error: e, count } = await supabase
-          .from('formalizacoes')
-          .select('*', { count: 'exact' })
-          .order('id', { ascending: false })
-          .range(from, from + ps - 1);
-        if (e) throw e;
-        all = [...all, ...chunk];
-        from += ps;
-        if (count) setProg(Math.round(all.length / count * 100));
-        if (chunk.length < ps) break;
-      }
-      setRaw(all.map(r => ({
-        ...r,
-        _val:    parseFloat(String(r['VALOR REPASSE'] || 0).replace(/[^\d.-]/g, '')) || 0,
-        _ano:    String(r.ANO || r.ano || '').trim().slice(0, 4) || 'N/D',
-        _sit:    String(r.AJUSTE || r.SITUACIONAL || '').trim().toUpperCase() || 'N/D',
-        _instr:  String(r.INSTRUMENTO || '').trim().toUpperCase() || 'N/D',
-        _uf:     String(r.UF || r.uf || '').trim().toUpperCase() || 'N/D',
-        _tec:    String(r['TÉCNICO DE FORMALIZAÇÃO'] || '').trim() || 'N/D',
-        _equipe: String(r.EQUIPE || '').trim() || 'N/D',
-        _cgap:   String(r['TRAMITADO PARA CGAP'] || '').trim().toUpperCase(),
-      })));
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
-  }, []);
+// No DashboardSneaElis() altere a função load:
 
+// src/pages/Dashboard.jsx
+
+// 1. Fora do componente ou no topo, adicione esta função auxiliar para tratar valores financeiros
+const parseMoeda = (valor) => {
+  if (valor === null || valor === undefined || valor === '') return 0;
+  if (typeof valor === 'number') return valor;
+
+  try {
+    // Remove símbolos de moeda, espaços e caracteres invisíveis
+    let str = String(valor).replace(/R\$/g, '').replace(/\s/g, '').trim();
+
+    // Lógica para Formato Brasileiro: 1.234,56 ou 1234,56
+    // Se tem vírgula e ponto, ou só vírgula, tratamos como padrão PT-BR
+    if (str.includes(',') && str.includes('.')) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else if (str.includes(',')) {
+      str = str.replace(',', '.');
+    }
+
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
+  } catch (e) {
+    return 0;
+  }
+};
+
+// 2. Dentro do componente DashboardSneaElis, substitua a função load por esta:
+const load = useCallback(async () => {
+  setLoading(true);
+  setError(null);
+  setProg(0);
+
+  try {
+    const response = await fetch('http://localhost:7890/api/dados');
+    if (!response.ok) throw new Error('Erro ao conectar com o servidor de dados.');
+    
+    const jsonData = await response.json();
+    setProg(100);
+
+    // Função interna para buscar chaves ignorando espaços e maiúsculas
+    const getSafe = (obj, keyName) => {
+      const target = keyName.toUpperCase().trim();
+      const foundKey = Object.keys(obj).find(k => k.toUpperCase().trim() === target);
+      return foundKey ? obj[foundKey] : undefined;
+    };
+
+    // Filtra linhas válidas (que tenham proposta ou entidade)
+    const validData = jsonData.filter(r => 
+      getSafe(r, 'PROPOSTA') || getSafe(r, 'ENTIDADE') || getSafe(r, 'PROCESSO')
+    );
+
+    const mappedData = validData.map(r => {
+      // Extração segura dos campos do Excel
+      const vRepasse = getSafe(r, 'VALOR REPASSE') || getSafe(r, 'VALOR_REPASSE') || 0;
+      const situacao = getSafe(r, 'SITUACIONAL_FINAL') || getSafe(r, 'AJUSTE') || getSafe(r, 'SITUACIONAL') || 'N/D';
+      const tecnico  = getSafe(r, 'TÉCNICO FORMALIZAÇÃO') || getSafe(r, 'TÉCNICO DE FORMALIZAÇÃO') || 'N/D';
+      const uf       = getSafe(r, 'UF') || 'N/D';
+      const ano      = getSafe(r, 'ANO') || '';
+
+      return {
+        ...r,
+        PROPOSTA: getSafe(r, 'PROPOSTA') || getSafe(r, 'Nº SEI OU PROPOSTA') || '—',
+        ENTIDADE: getSafe(r, 'ENTIDADE') || '—',
+        _val:    parseMoeda(vRepasse), // Usa a função de limpeza pesada
+        _ano:    String(ano).trim().slice(0, 4) || 'N/D',
+        _sit:    String(situacao).trim().toUpperCase(),
+        _uf:     String(uf).trim().toUpperCase(),
+        _instr:  String(getSafe(r, 'INSTRUMENTO') || 'N/D').trim().toUpperCase(),
+        _tec:    String(tecnico).trim(),
+        _cgap:   String(getSafe(r, 'TRAMITADO PARA CGAP') || '').trim().toUpperCase(),
+      };
+    });
+
+    setRaw(mappedData);
+    console.log(`✅ ${mappedData.length} registros carregados com sucesso.`);
+
+  } catch (err) {
+    console.error("Erro no processamento:", err);
+    setError("Erro ao carregar dados: " + err.message);
+  } finally {
+    setTimeout(() => setLoading(false), 500);
+  }
+}, []);
   useEffect(() => { load(); }, [load]);
 
   // ── Dados filtrados ─────────────────────────────────────────
@@ -1380,23 +1434,23 @@ export default function DashboardSneaElis() {
 
   // ── Colunas da tabela ───────────────────────────────────────
   const tblCols = useMemo(() => [
-    { accessorKey: 'PROPOSTA',   header: 'Proposta',    cell: ({ getValue }) => <span className="ds-mono">{getValue()}</span> },
+    { accessorKey: 'PROPOSTA',   header: 'Proposta',    cell: ({ getValue }) => <span className="ds-mono">{getValue() || '—'}</span> },
     { accessorKey: 'ENTIDADE',   header: 'Entidade',    cell: ({ getValue }) => <span style={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 11 }}>{getValue() || '—'}</span> },
     { accessorKey: '_uf',        header: 'UF',          cell: ({ getValue }) => <span className="br-tag info">{getValue()}</span> },
     { accessorKey: '_val',       header: 'Valor',       cell: ({ getValue }) => <span className="ds-mono">{(getValue() || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span> },
     { accessorKey: '_instr',     header: 'Instrumento', cell: ({ getValue }) => <span className="br-tag neutral">{getValue()}</span> },
     { accessorKey: '_ano',       header: 'Ano' },
-    { accessorKey: 'AJUSTE',     header: 'Ajuste',      cell: ({ getValue }) => <StatusBadge v={getValue()} /> },
+    { accessorKey: '_sit',       header: 'Ajuste',      cell: ({ getValue }) => <StatusBadge v={getValue()} /> },
     { accessorKey: '_cgap',      header: 'CGAP',
       cell: ({ getValue }) => {
         const v = getValue();
         if (v === 'CGAP') return <span className="br-tag danger">CGAP</span>;
-        if (!v) return <span style={{ color: 'var(--text-04)' }}>—</span>;
+        if (!v || v === 'N/D') return <span style={{ color: 'var(--text-04)' }}>—</span>;
         return <span className="br-tag neutral">{v}</span>;
       }
     },
     { accessorKey: 'PUBLICAÇÃO NO TRANSFEREGOV', header: 'Publicação', cell: ({ getValue }) => <StatusBadge v={getValue()} /> },
-    { accessorKey: 'TÉCNICO DE FORMALIZAÇÃO',    header: 'Técnico' },
+    { accessorKey: '_tec',       header: 'Técnico' }, // <--- Mudamos para _tec (que já limpamos no load)
   ], []);
 
   const tbl = useReactTable({
