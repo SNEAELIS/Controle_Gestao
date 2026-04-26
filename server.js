@@ -77,11 +77,12 @@ const buildPath = path.join(__dirname, 'dist');
 app.use(express.static(buildPath));
 
 // Qualquer rota que não seja /api será enviada para o React (SPA)
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  }
-});
+// Captura qualquer rota (.*) para servir o React
+app.get('(.*)', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(buildPath, 'index.html'));
+    }
+  });
 
 // Porta dinâmica para o Render ou 7890 para local
 const PORT = process.env.PORT || 7890;
