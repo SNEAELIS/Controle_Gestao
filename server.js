@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+let fetchPromise = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
