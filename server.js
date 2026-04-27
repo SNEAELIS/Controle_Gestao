@@ -55,60 +55,75 @@ async function getAccessToken() {
   return cachedToken;
 }
 
-// Rota de API Otimizada
-app.get('/api/dados', async (req, res) => {
-  const now = Date.now();
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    cached: !!cachedData,
+    age: cachedData ? Math.round((Date.now() - lastFetchTime) / 1000) : null
+  });
+});
 
-  // 1. Verifica Cache
-  if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
-    console.log("⚡ Dados servidos via Cache (Instantâneo)");
+// Rota de API Otimizada
+app.get("/api/dados", async (req, res) => {
+  const now = Date.now();
+  const forceRefresh = req.query.refresh === "1";
+
+  // 1. Cache válido → responde imediatamente
+  if (!forceRefresh && cachedData && now - lastFetchTime < CACHE_DURATION) {
+    const ageSeconds = Math.round((now - lastFetchTime) / 1000);
+    console.log(`⚡ Cache hit — ${cachedData.length} linhas (${ageSeconds}s atrás)`);
+    res.setHeader("X-Cache", "HIT");
+    res.setHeader("X-Cache-Age", String(ageSeconds));
     return res.json(cachedData);
   }
 
+  // 2. Se já há um fetch em andamento, aguarda o mesmo (evita thundering herd)
+  if (fetchPromise) {
+    console.log("🔗 Aguardando fetch já em andamento...");
+    try {
+      const data = await fetchPromise;
+      res.setHeader("X-Cache", "COALESCED");
+      return res.json(data);
+    } catch {
+      // se o fetch em andamento falhou, cai no fallback abaixo
+    }
+  }
+
+  // 3. Dispara novo fetch
+  console.log("📡 Buscando dados no SharePoint/OneDrive...");
+  fetchPromise = fetchAndParseExcel();
+
   try {
-    console.log("📡 Buscando novos dados no SharePoint/OneDrive...");
-    const token = await getAccessToken();
+    const jsonData = await fetchPromise;
 
-    // 2. Busca metadados (URL de download)
-    const fileRes = await axios.get(
-      `https://graph.microsoft.com/v1.0/users/${MS_CONFIG.userEmail}/drive/items/${MS_CONFIG.documentId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    const downloadUrl = fileRes.data["@microsoft.graph.downloadUrl"];
-
-    // 3. Download do binário
-    const excelRes = await axios.get(downloadUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 15000 // 15 segundos de timeout
-    });
-
-    // 4. Processamento XLSX
-    const workbook = XLSX.read(excelRes.data, { type: 'buffer' });
-    const sheetName = "Controle Geral"; 
-    const sheet = workbook.Sheets[sheetName];
-    
-    if (!sheet) throw new Error(`Aba '${sheetName}' não encontrada.`);
-
-    const jsonData = XLSX.utils.sheet_to_json(sheet);
-    
-    // 5. Atualiza Cache Global
     cachedData = jsonData;
-    lastFetchTime = now;
+    lastFetchTime = Date.now();
+    console.log(`✅ Cache renovado: ${jsonData.length} linhas.`);
 
-    console.log(`✅ Cache atualizado: ${jsonData.length} linhas.`);
-    res.json(jsonData);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(jsonData);
 
   } catch (error) {
-    console.error("❌ Erro:", error.message);
-    
-    // Se falhar mas tivermos cache antigo, envia o antigo em vez de erro
+    console.error("❌ Erro ao buscar dados:", error.message);
+
+    // Fallback: cache antigo é melhor que erro 500
     if (cachedData) {
-      console.log("⚠️ Falha na renovação. Enviando cache antigo.");
+      const staleAge = Math.round((Date.now() - lastFetchTime) / 1000 / 60);
+      console.warn(`⚠️ Servindo cache stale (${staleAge} min atrás).`);
+      res.setHeader("X-Cache", "STALE");
+      res.setHeader("X-Cache-Stale-Age", String(staleAge));
       return res.json(cachedData);
     }
 
-    res.status(500).json({ error: "Erro na sincronização", details: error.message });
+    return res.status(503).json({
+      error: "Serviço temporariamente indisponível.",
+      details: error.message,
+      retry_after: 10,
+    });
+
+  } finally {
+    // Libera a fila independentemente do resultado
+    fetchPromise = null;
   }
 });
 
@@ -123,6 +138,28 @@ app.get('/*path', (req, res) => {
 });
 
 const PORT = process.env.PORT || 7890;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor Otimizado na porta ${PORT}`);
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`🚀 Servidor na porta ${PORT}`);
+
+  // Pré-aquece o cache assim que o servidor sobe
+  console.log('🔥 Pré-aquecendo cache...');
+  try {
+    const token = await getAccessToken();
+    const fileRes = await axios.get(
+      `https://graph.microsoft.com/v1.0/users/${MS_CONFIG.userEmail}/drive/items/${MS_CONFIG.documentId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const downloadUrl = fileRes.data["@microsoft.graph.downloadUrl"];
+    const excelRes = await axios.get(downloadUrl, {
+      responseType: 'arraybuffer', timeout: 30000
+    });
+    const wb = XLSX.read(excelRes.data, { type: 'buffer' });
+    const sheet = wb.Sheets["Controle Geral"];
+    if (!sheet) throw new Error('Aba não encontrada');
+    cachedData = XLSX.utils.sheet_to_json(sheet);
+    lastFetchTime = Date.now();
+    console.log(`✅ Cache quente: ${cachedData.length} linhas prontas.`);
+  } catch (e) {
+    console.warn('⚠️ Pré-aquecimento falhou, dados carregados sob demanda.', e.message);
+  }
 });
