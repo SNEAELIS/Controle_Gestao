@@ -90,6 +90,27 @@ app.get("/api/dados", async (req, res) => {
     }
   }
 
+  async function fetchAndParseExcel() {
+    const token = await getAccessToken();
+    const fileRes = await axios.get(
+      `https://graph.microsoft.com/v1.0/users/${MS_CONFIG.userEmail}/drive/items/${MS_CONFIG.documentId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    const downloadUrl = fileRes.data["@microsoft.graph.downloadUrl"];
+    const excelRes = await axios.get(downloadUrl, {
+      responseType: 'arraybuffer', 
+      timeout: 30000 
+    });
+    
+    const wb = XLSX.read(excelRes.data, { type: 'buffer' });
+    const sheet = wb.Sheets["Controle Geral"]; // Verifique se o nome da aba está correto!
+    
+    if (!sheet) throw new Error('Aba "Controle Geral" não encontrada no Excel');
+    
+    return XLSX.utils.sheet_to_json(sheet);
+  }
+
   // 3. Dispara novo fetch
   console.log("📡 Buscando dados no SharePoint/OneDrive...");
   fetchPromise = fetchAndParseExcel();
